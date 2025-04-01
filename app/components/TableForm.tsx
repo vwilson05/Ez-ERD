@@ -6,14 +6,17 @@ import { Column } from '../utils/types';
 import { tableTemplates, TableTemplate } from '../utils/tableTemplates';
 
 interface TableFormProps {
-  onSave: (tableName: string, columns: Column[]) => void;
+  onSave: (tableName: string, columns: Column[], tableType?: string, tableComment?: string) => void;
   onCancel: () => void;
+  existingTables?: { id: string; label: string; columns: Column[] }[];
 }
 
-export default function TableForm({ onSave, onCancel }: TableFormProps) {
+export default function TableForm({ onSave, onCancel, existingTables = [] }: TableFormProps) {
   const [formMode, setFormMode] = useState<'custom' | 'template'>('custom');
   const [selectedTemplate, setSelectedTemplate] = useState<TableTemplate | null>(null);
   const [tableName, setTableName] = useState('');
+  const [tableType, setTableType] = useState<'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE'>('TABLE');
+  const [tableComment, setTableComment] = useState('');
   const [columns, setColumns] = useState<Column[]>([
     {
       id: uuidv4(),
@@ -22,6 +25,7 @@ export default function TableForm({ onSave, onCancel }: TableFormProps) {
       isPrimaryKey: false,
       isForeignKey: false,
       isNullable: true,
+      comment: '',
     },
   ]);
 
@@ -44,6 +48,7 @@ export default function TableForm({ onSave, onCancel }: TableFormProps) {
         isPrimaryKey: false,
         isForeignKey: false,
         isNullable: true,
+        comment: '',
       },
     ]);
   };
@@ -65,7 +70,7 @@ export default function TableForm({ onSave, onCancel }: TableFormProps) {
     
     // Basic validation
     if (!tableName.trim()) {
-      alert('Please enter a table name');
+      alert('Please enter a name');
       return;
     }
     
@@ -77,18 +82,12 @@ export default function TableForm({ onSave, onCancel }: TableFormProps) {
         return;
       }
       
-      // Check if at least one primary key exists
-      if (!columns.some((col) => col.isPrimaryKey)) {
-        alert('Table must have at least one primary key');
-        return;
-      }
-      
       columnsToSave = columns;
     } else if (formMode === 'template' && selectedTemplate) {
       columnsToSave = selectedTemplate.getColumns(tableName);
     }
     
-    onSave(tableName, columnsToSave);
+    onSave(tableName, columnsToSave, tableType, tableComment);
   };
 
   const handleTemplateSelect = (template: TableTemplate) => {
@@ -99,6 +98,17 @@ export default function TableForm({ onSave, onCancel }: TableFormProps) {
     setFormMode(mode);
     if (mode === 'custom') {
       setSelectedTemplate(null);
+    }
+  };
+
+  // Helper function to get display name for object type
+  const getObjectTypeDisplayName = (type: string) => {
+    switch (type) {
+      case 'VIEW': return 'View';
+      case 'MATERIALIZED_VIEW': return 'Materialized View';
+      case 'DYNAMIC_TABLE': return 'Dynamic Table';
+      case 'ICEBERG_TABLE': return 'Iceberg Table';
+      default: return 'Table';
     }
   };
 
@@ -135,17 +145,51 @@ export default function TableForm({ onSave, onCancel }: TableFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="tableName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Name
+          </label>
+          <input
+            type="text"
+            id="tableName"
+            value={tableName}
+            onChange={(e) => setTableName(e.target.value)}
+            className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm dark:bg-gray-900 dark:text-white text-sm"
+            required
+          />
+        </div>
+        
+        <div>
+          <label htmlFor="objectType" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Object Type
+          </label>
+          <select
+            id="objectType"
+            value={tableType}
+            onChange={(e) => setTableType(e.target.value as any)}
+            className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm dark:bg-gray-900 dark:text-white text-sm"
+          >
+            <option value="TABLE">Table</option>
+            <option value="VIEW">View</option>
+            <option value="MATERIALIZED_VIEW">Materialized View</option>
+            <option value="DYNAMIC_TABLE">Dynamic Table</option>
+            <option value="ICEBERG_TABLE">Iceberg Table</option>
+          </select>
+        </div>
+      </div>
+      
       <div>
-        <label htmlFor="tableName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Table Name
+        <label htmlFor="tableComment" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          Table Comment
         </label>
         <input
           type="text"
-          id="tableName"
-          value={tableName}
-          onChange={(e) => setTableName(e.target.value)}
+          id="tableComment"
+          value={tableComment}
+          onChange={(e) => setTableComment(e.target.value)}
+          placeholder="Add a comment for the table..."
           className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm dark:bg-gray-900 dark:text-white text-sm"
-          required
         />
       </div>
       
@@ -159,7 +203,7 @@ export default function TableForm({ onSave, onCancel }: TableFormProps) {
           }`}
           onClick={() => handleModeChange('custom')}
         >
-          Custom Table
+          Custom
         </button>
         <button
           type="button"
@@ -251,22 +295,48 @@ export default function TableForm({ onSave, onCancel }: TableFormProps) {
                 
                 {column.isForeignKey && (
                   <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      placeholder="Referenced Table"
+                    <select
                       value={column.referencedTable || ''}
                       onChange={(e) => updateColumn(column.id, 'referencedTable', e.target.value)}
                       className="block w-full border border-gray-300 dark:border-gray-600 rounded shadow-sm dark:bg-gray-900 dark:text-white text-sm"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Referenced Column"
+                    >
+                      <option value="">Select Table</option>
+                      {existingTables.map((table) => (
+                        <option key={table.id} value={table.label}>
+                          {table.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
                       value={column.referencedColumn || ''}
                       onChange={(e) => updateColumn(column.id, 'referencedColumn', e.target.value)}
                       className="block w-full border border-gray-300 dark:border-gray-600 rounded shadow-sm dark:bg-gray-900 dark:text-white text-sm"
-                    />
+                      disabled={!column.referencedTable}
+                    >
+                      <option value="">Select Column</option>
+                      {column.referencedTable && existingTables
+                        .find((table) => table.label === column.referencedTable)
+                        ?.columns.map((col) => (
+                          <option key={col.id} value={col.name}>
+                            {col.name}
+                          </option>
+                        ))}
+                    </select>
                   </div>
                 )}
+
+                <div className="mt-2">
+                  <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                    Column Comment
+                  </label>
+                  <input 
+                    type="text" 
+                    value={column.comment || ''}
+                    onChange={(e) => updateColumn(column.id, 'comment', e.target.value)}
+                    placeholder="Optional column comment"
+                    className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -364,7 +434,7 @@ export default function TableForm({ onSave, onCancel }: TableFormProps) {
           className="px-4 py-2 text-sm bg-primary-light hover:bg-primary dark:bg-primary-dark hover:dark:bg-primary text-white rounded"
           disabled={formMode === 'template' && !selectedTemplate}
         >
-          Save Table
+          Create {getObjectTypeDisplayName(tableType)}
         </button>
       </div>
     </form>

@@ -12,6 +12,11 @@ interface TableNodeProps extends NodeProps {
     columns: Column[];
     onColumnsChange?: (columns: Column[]) => void;
     tableType?: 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE';
+    onDelete?: (nodeId: string) => void;
+    comment?: string;
+    tags?: string[];
+    onCommentChange?: (comment: string) => void;
+    onTagsChange?: (tags: string[]) => void;
   };
   selected: boolean;
 }
@@ -20,6 +25,9 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editedColumn, setEditedColumn] = useState<Column | null>(null);
   const [isAddingColumn, setIsAddingColumn] = useState(false);
+  const [isEditingComment, setIsEditingComment] = useState(false);
+  const [editedComment, setEditedComment] = useState(data.comment || '');
+  const [editedTags, setEditedTags] = useState(data.tags?.join(', ') || '');
   const [newColumn, setNewColumn] = useState<Column>({
     id: '',
     name: '',
@@ -187,47 +195,114 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
   return (
     <div className={`border-2 rounded-md overflow-hidden ${
       selected ? 'border-primary-dark dark:border-primary-light' : 'border-gray-300 dark:border-gray-600'
-    } bg-white dark:bg-gray-800 shadow-md min-w-[250px] relative`}>
+    } bg-white dark:bg-gray-800 shadow-md min-w-[250px] relative !z-10`}>
       {/* Connection handles - one in the center of each side */}
       <Handle
         type="source"
         position={Position.Top}
         id={`${id}-top`}
-        className="w-5 h-5 !bg-blue-500 !border-2 !border-white dark:!border-white !z-30"
-        style={{ left: '50%', top: '-10px' }}
+        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm"
+        style={{ left: '50%', top: '0px', transform: 'translate(-50%, -50%)' }}
       />
       
       <Handle
         type="source"
         position={Position.Left}
         id={`${id}-left`}
-        className="w-5 h-5 !bg-blue-500 !border-2 !border-white dark:!border-white !z-30"
-        style={{ top: '50%', left: '-10px' }}
+        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm"
+        style={{ top: '50%', left: '0px', transform: 'translate(-50%, -50%)' }}
       />
       
       <Handle
         type="target"
         position={Position.Right}
         id={`${id}-right`}
-        className="w-5 h-5 !bg-green-500 !border-2 !border-white dark:!border-white !z-30"
-        style={{ top: '50%', right: '-10px' }}
+        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm"
+        style={{ top: '50%', right: '0px', transform: 'translate(50%, -50%)' }}
       />
       
       <Handle
         type="target"
         position={Position.Bottom}
         id={`${id}-bottom`}
-        className="w-5 h-5 !bg-green-500 !border-2 !border-white dark:!border-white !z-30"
-        style={{ left: '50%', bottom: '-10px' }}
+        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm"
+        style={{ left: '50%', bottom: '0px', transform: 'translate(-50%, 50%)' }}
       />
       
       {/* Table Header */}
       <div className={`p-2 font-semibold border-b border-gray-300 dark:border-gray-600 ${getHeaderColor()}`}>
         <div className="flex items-center justify-between">
           <span>{data.label}</span>
-          <div className="flex items-center text-xs text-gray-700 dark:text-gray-300 ml-2">
-            {getObjectTypeIcon()}
-            <span className="ml-1">{getDisplayTypeName(data.tableType)}</span>
+          <div className="flex items-center">
+            <div className="flex items-center text-xs text-gray-700 dark:text-gray-300 mr-2">
+              {getObjectTypeIcon()}
+              <span className="ml-1">{getDisplayTypeName(data.tableType)}</span>
+            </div>
+            {data.onDelete && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`Are you sure you want to delete "${data.label}"? This action cannot be undone.`)) {
+                    if (data.onDelete) {
+                      data.onDelete(id);
+                    }
+                  }
+                }}
+                className="text-red-500 hover:text-red-700 p-1"
+                title="Delete object"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="mt-2 flex items-center space-x-2">
+          {isEditingComment ? (
+            <div className="flex-1">
+              <input
+                type="text"
+                value={editedComment}
+                onChange={(e) => setEditedComment(e.target.value)}
+                onBlur={() => {
+                  setIsEditingComment(false);
+                  data.onCommentChange?.(editedComment);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setIsEditingComment(false);
+                    data.onCommentChange?.(editedComment);
+                  }
+                }}
+                placeholder="Add a comment..."
+                className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                autoFocus
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsEditingComment(true)}
+              className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+              </svg>
+              {data.comment || 'Add comment'}
+            </button>
+          )}
+          <div className="flex-1">
+            <input
+              type="text"
+              value={editedTags}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditedTags(e.target.value)}
+              onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
+                const tags = e.target.value.split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag);
+                data.onTagsChange?.(tags);
+              }}
+              placeholder="Add tags (comma separated)..."
+              className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            />
           </div>
         </div>
       </div>

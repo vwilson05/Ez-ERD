@@ -24,6 +24,7 @@ import { NodeType, EdgeType, Column, DomainNodeType, ERDNode } from '../utils/ty
 import RelationshipTypeSelector from './RelationshipTypeSelector';
 import { tableTemplates, TableTemplate } from '../utils/tableTemplates';
 import { v4 as uuidv4 } from 'uuid';
+import TableForm from './TableForm';
 
 // Define custom node types
 const nodeTypes = {
@@ -33,7 +34,7 @@ const nodeTypes = {
 
 interface ERDCanvasProps {
   nodes: ERDNode[];
-  setNodes: (nodes: ERDNode[]) => void;
+  setNodes: React.Dispatch<React.SetStateAction<ERDNode[]>>;
   edges: EdgeType[];
   setEdges: (edges: EdgeType[]) => void;
 }
@@ -99,7 +100,39 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
     );
   }, [nodes, setNodes, setReactFlowNodes]);
 
-  // Prepare nodes with callback
+  // Handle node deletion
+  const handleNodeDelete = useCallback((nodeId: string) => {
+    // Remove the node from the parent component's state
+    const updatedNodes = nodes.filter(node => node.id !== nodeId);
+    setNodes(updatedNodes);
+    
+    // Remove any edges connected to this node
+    const updatedEdges = edges.filter(
+      edge => edge.source !== nodeId && edge.target !== nodeId
+    );
+    setEdges(updatedEdges);
+  }, [nodes, edges, setNodes, setEdges]);
+
+  // Handle comment changes in nodes
+  const handleCommentChange = useCallback((nodeId: string, comment: string) => {
+    const updatedNodes = nodes.map(node => 
+      node.id === nodeId 
+        ? { ...node, data: { ...node.data, comment } } 
+        : node
+    ) as ERDNode[];
+    setNodes(updatedNodes);
+    
+    // Update ReactFlow's state
+    setReactFlowNodes(nodes => 
+      nodes.map(node => 
+        node.id === nodeId 
+          ? { ...node, data: { ...node.data, comment } } 
+          : node
+      )
+    );
+  }, [nodes, setNodes, setReactFlowNodes]);
+
+  // Prepare nodes with callbacks
   useEffect(() => {
     const nodesWithCallback = nodes.map(node => {
       if (node.type === 'table') {
@@ -107,14 +140,25 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
           ...node,
           data: {
             ...node.data,
-            onColumnsChange: (columns: Column[]) => handleColumnsChange(node.id, columns)
+            onColumnsChange: (columns: Column[]) => handleColumnsChange(node.id, columns),
+            onDelete: (nodeId: string) => handleNodeDelete(nodeId),
+            onCommentChange: (comment: string) => handleCommentChange(node.id, comment)
+          }
+        };
+      } else if (node.type === 'domain') {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            onDelete: (nodeId: string) => handleNodeDelete(nodeId),
+            onCommentChange: (comment: string) => handleCommentChange(node.id, comment)
           }
         };
       }
       return node;
     });
     setReactFlowNodes(nodesWithCallback as Node[]);
-  }, [nodes, setReactFlowNodes, handleColumnsChange]);
+  }, [nodes, setReactFlowNodes, handleColumnsChange, handleNodeDelete, handleCommentChange]);
 
   // Handle connections between nodes
   const onConnect = useCallback(
@@ -347,12 +391,7 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
         return;
       }
       
-      // Check if at least one primary key exists 
-      // (only for tables, not required for views)
-      if (tableType === 'TABLE' && !newTableColumns.some((col) => col.isPrimaryKey)) {
-        alert('Table must have at least one primary key');
-        return;
-      }
+      // Primary key is now optional for all types
       
       columnsToSave = newTableColumns;
     } else if (tableCreationMode === 'template' && selectedTemplate) {
@@ -367,13 +406,13 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
       data: {
         label: newTableName,
         columns: columnsToSave,
-        tableType: tableType
+        tableType: tableType as 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE'
       }
     };
     
-    setNodes([...nodes, newNode]);
+    setNodes(prevNodes => [...prevNodes, newNode]);
     setShowTableCreationModal(false);
-  }, [tableCreationMode, selectedTemplate, newTableName, newTableColumns, newTablePosition, nodes, setNodes, tableType]);
+  }, [tableCreationMode, selectedTemplate, newTableName, newTableColumns, newTablePosition, setNodes, tableType]);
   
   const snowflakeDataTypes = [
     'VARCHAR',
@@ -422,13 +461,13 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
       }
     };
     
-    setNodes([...nodes, newNode]);
+    setNodes(prevNodes => [...prevNodes, newNode]);
     setShowDomainModal(false);
-  }, [newDomainPosition, newDomainData, nodes, setNodes]);
+  }, [newDomainPosition, newDomainData, setNodes]);
 
   return (
     <div className="h-full w-full bg-surface-light dark:bg-surface-dark rounded-lg overflow-hidden relative">
-      <div ref={reactFlowWrapper} className="h-full w-full">
+      <div ref={reactFlowWrapper} className="h-full w-full [&_.react-flow__node-domain]:!z-[-1000] [&_.react-flow__node-table]:!z-10">
         <ReactFlow
           nodes={reactFlowNodes}
           edges={reactFlowEdges}
@@ -445,6 +484,10 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
           nodeTypes={nodeTypes}
           defaultEdgeOptions={defaultEdgeOptions}
           fitView
+          elementsSelectable={true}
+          nodesConnectable={true}
+          style={{ background: 'var(--surface-light)' }}
+          className="dark:bg-surface-dark [&_.react-flow__handle]:!visible [&_.react-flow__handle]:opacity-100 [&_.react-flow__handle]:pointer-events-auto"
         >
           <Background />
           <Controls />
@@ -536,196 +579,31 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Create New Object</h2>
             
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Name
-              </label>
-              <input 
-                type="text" 
-                value={newTableName}
-                onChange={(e) => setNewTableName(e.target.value)}
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                placeholder="Enter object name"
-              />
-            </div>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Object Type
-              </label>
-              <select 
-                value={tableType}
-                onChange={(e) => setTableType(e.target.value as any)}
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value="TABLE">Table</option>
-                <option value="VIEW">View</option>
-                <option value="MATERIALIZED_VIEW">Materialized View</option>
-                <option value="DYNAMIC_TABLE">Dynamic Table</option>
-                <option value="ICEBERG_TABLE">Iceberg Table</option>
-              </select>
-            </div>
-            
-            <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
-              <button
-                type="button"
-                className={`py-2 px-4 text-sm font-medium ${
-                  tableCreationMode === 'custom'
-                    ? 'border-b-2 border-primary-dark dark:border-primary-light text-primary-dark dark:text-primary-light'
-                    : 'text-gray-500 dark:text-gray-400'
-                }`}
-                onClick={() => setTableCreationMode('custom')}
-              >
-                Custom
-              </button>
-              <button
-                type="button"
-                className={`py-2 px-4 text-sm font-medium ${
-                  tableCreationMode === 'template'
-                    ? 'border-b-2 border-primary-dark dark:border-primary-light text-primary-dark dark:text-primary-light'
-                    : 'text-gray-500 dark:text-gray-400'
-                }`}
-                onClick={() => setTableCreationMode('template')}
-              >
-                Use Template
-              </button>
-            </div>
-            
-            {tableCreationMode === 'custom' ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Columns
-                </label>
+            <TableForm
+              onSave={(tableName: string, columns: Column[], tableType?: string, tableComment?: string) => {
+                // Create a new table node
+                const newNode: NodeType = {
+                  id: `table-${Date.now()}`,
+                  type: 'table',
+                  position: newTablePosition,
+                  data: {
+                    label: tableName,
+                    columns: columns,
+                    tableType: tableType as 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE',
+                    comment: tableComment
+                  }
+                };
                 
-                <div className="space-y-3 max-h-[40vh] overflow-y-auto p-1">
-                  {newTableColumns.map((column, index) => (
-                    <div key={column.id} className="flex flex-col space-y-2 p-2 border rounded dark:border-gray-700">
-                      <div className="flex justify-between">
-                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Column {index + 1}</span>
-                        {newTableColumns.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeColumn(column.id)}
-                            className="text-red-500 hover:text-red-700 text-xs"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                      
-                      <input
-                        type="text"
-                        placeholder="Column Name"
-                        value={column.name}
-                        onChange={(e) => updateColumn(column.id, 'name', e.target.value)}
-                        className="block w-full border border-gray-300 dark:border-gray-600 rounded shadow-sm dark:bg-gray-900 dark:text-white text-sm"
-                        required
-                      />
-                      
-                      <select
-                        value={column.dataType}
-                        onChange={(e) => updateColumn(column.id, 'dataType', e.target.value)}
-                        className="block w-full border border-gray-300 dark:border-gray-600 rounded shadow-sm dark:bg-gray-900 dark:text-white text-sm"
-                      >
-                        {snowflakeDataTypes.map((type) => (
-                          <option key={type} value={type}>
-                            {type}
-                          </option>
-                        ))}
-                      </select>
-                      
-                      <div className="flex space-x-4">
-                        <label className="flex items-center text-sm">
-                          <input
-                            type="checkbox"
-                            checked={column.isPrimaryKey}
-                            onChange={(e) => updateColumn(column.id, 'isPrimaryKey', e.target.checked)}
-                            className="mr-1"
-                          />
-                          Primary Key
-                        </label>
-                        
-                        <label className="flex items-center text-sm">
-                          <input
-                            type="checkbox"
-                            checked={column.isForeignKey}
-                            onChange={(e) => updateColumn(column.id, 'isForeignKey', e.target.checked)}
-                            className="mr-1"
-                          />
-                          Foreign Key
-                        </label>
-                        
-                        <label className="flex items-center text-sm">
-                          <input
-                            type="checkbox"
-                            checked={column.isNullable}
-                            onChange={(e) => updateColumn(column.id, 'isNullable', e.target.checked)}
-                            className="mr-1"
-                          />
-                          Nullable
-                        </label>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                <button
-                  type="button"
-                  onClick={addNewColumn}
-                  className="mt-3 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded text-sm"
-                >
-                  + Add Column
-                </button>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Select a Template
-                </label>
-                
-                <div className="space-y-4 max-h-[40vh] overflow-y-auto p-1">
-                  {Object.entries(groupedTemplates).map(([category, templates]) => (
-                    <div key={category} className="space-y-2">
-                      <h4 className="font-medium text-sm text-gray-600 dark:text-gray-400">{category}</h4>
-                      <div className="grid grid-cols-1 gap-2">
-                        {templates.map((template) => (
-                          <div
-                            key={template.name}
-                            className={`p-3 border rounded-lg cursor-pointer ${
-                              selectedTemplate?.name === template.name
-                                ? 'border-primary-dark dark:border-primary-light bg-blue-50 dark:bg-blue-900/20'
-                                : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
-                            }`}
-                            onClick={() => setSelectedTemplate(template)}
-                          >
-                            <div className="font-medium text-sm">{template.name}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              {template.description}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            <div className="flex justify-end space-x-2 mt-6">
-              <button 
-                onClick={() => setShowTableCreationModal(false)}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={createTable}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded text-white"
-                disabled={tableCreationMode === 'template' && !selectedTemplate}
-              >
-                Create
-              </button>
-            </div>
+                setNodes(prevNodes => [...prevNodes, newNode]);
+                setShowTableCreationModal(false);
+              }}
+              onCancel={() => setShowTableCreationModal(false)}
+              existingTables={nodes.filter(node => node.type === 'table').map(node => ({
+                id: node.id,
+                label: node.data.label,
+                columns: node.data.columns
+              }))}
+            />
           </div>
         </div>
       )}

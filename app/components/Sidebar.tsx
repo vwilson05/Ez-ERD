@@ -30,7 +30,7 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
     setEditableDDL(ddl);
   }, [ddl]);
   
-  const addNewTable = (tableName: string, columns: Column[]) => {
+  const addNewTable = (tableName: string, columns: Column[], tableType?: string) => {
     const newNode: NodeType = {
       id: uuidv4(),
       type: 'table',
@@ -41,6 +41,7 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
       data: {
         label: tableName,
         columns: columns,
+        tableType: tableType as 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE'
       },
     };
     
@@ -215,12 +216,12 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
         {activeTab === 'tables' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold dark:text-white">Tables</h3>
+              <h3 className="text-lg font-semibold dark:text-white">Objects</h3>
               <button
                 onClick={() => setShowCreateTable(true)}
                 className="bg-primary-light hover:bg-primary dark:bg-primary-dark hover:dark:bg-primary text-white px-3 py-1 rounded text-sm"
               >
-                Add Table
+                Add Object
               </button>
             </div>
             
@@ -229,11 +230,43 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
             ) : (
               <div className="space-y-2">
                 {nodes.length === 0 ? (
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">No tables added yet. Click "Add Table" to create your first table.</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">No objects added yet. Click "Add Object" to create your first table or view.</p>
                 ) : (
                   nodes.filter(node => node.type === 'table').map(node => (
                     <div key={node.id} className="p-2 border rounded dark:border-gray-700 text-sm">
-                      <div className="font-medium dark:text-white">{node.data.label}</div>
+                      <div className="flex justify-between items-center">
+                        <div className="font-medium dark:text-white">{node.data.label}</div>
+                        <div className="flex items-center">
+                          {node.data.tableType && node.data.tableType !== 'TABLE' && (
+                            <span className="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full mr-2">
+                              {node.data.tableType.replace('_', ' ')}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to delete "${node.data.label}"? This action cannot be undone.`)) {
+                                const updatedNodes = nodes.filter(n => n.id !== node.id);
+                                setNodes(updatedNodes);
+                                
+                                // Also delete any edges connected to this node
+                                const updatedEdges = edges.filter(
+                                  edge => edge.source !== node.id && edge.target !== node.id
+                                );
+                                setEdges(updatedEdges);
+                                
+                                // Regenerate DDL
+                                setTimeout(() => generateDDL(), 100);
+                              }
+                            }}
+                            className="text-red-500 hover:text-red-700 p-1"
+                            title="Delete object"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                       <div className="text-gray-500 dark:text-gray-400 text-xs">
                         {'columns' in node.data && `${node.data.columns.length} column${node.data.columns.length !== 1 ? 's' : ''}`}
                       </div>
