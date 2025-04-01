@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { NodeType, EdgeType } from '../utils/types';
+import { NodeType, EdgeType, ERDNode } from '../utils/types';
 import { useOpenAI } from '../utils/useOpenAI';
 import AIResponseModal from './AIResponseModal';
 import AIConversation from './AIConversation';
 
 interface AIPromptProps {
-  nodes: NodeType[];
-  setNodes: (nodes: NodeType[]) => void;
+  nodes: ERDNode[];
+  setNodes: (nodes: ERDNode[]) => void;
   edges: EdgeType[];
   setEdges: (edges: EdgeType[]) => void;
   setDDL: (ddl: string) => void;

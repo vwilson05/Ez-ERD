@@ -8,8 +8,11 @@ export interface Column {
   isNullable: boolean;
   referencedTable?: string;
   referencedColumn?: string;
+  comment?: string;
+  tags?: string[];
 }
 
+// TableNode Type
 export interface NodeType {
   id: string;
   type: 'table';
@@ -17,8 +20,27 @@ export interface NodeType {
   data: {
     label: string;
     columns: Column[];
+    comment?: string;
+    tags?: string[];
+    tableType?: 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE';
   };
 }
+
+// DomainNode Type
+export interface DomainNodeType {
+  id: string;
+  type: 'domain';
+  position: { x: number; y: number };
+  style?: { width?: number; height?: number };
+  data: {
+    label: string;
+    color: string;
+    opacity: number;
+  };
+}
+
+// Combined node type
+export type ERDNode = NodeType | DomainNodeType;
 
 // Edge Types
 export interface EdgeType {
@@ -43,6 +65,9 @@ export interface SnowflakeTable {
     referencedTable: string;
     referencedColumns: string[];
   }[];
+  comment?: string;
+  tags?: string[];
+  tableType?: 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE';
 }
 
 // OpenAI API Types

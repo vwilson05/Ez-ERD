@@ -10,17 +10,24 @@ module.exports = {
     extend: {
       colors: {
         primary: {
-          light: '#4a86e8',
-          DEFAULT: '#3b71ca',
-          dark: '#2c5ba9'
+          DEFAULT: 'var(--color-primary)',
+          light: 'var(--color-primary)',
+          dark: 'var(--color-primary)',
         },
-        background: {
-          light: '#ffffff',
-          dark: '#121212'
+        secondary: {
+          DEFAULT: 'var(--color-secondary)',
+          light: 'var(--color-secondary)',
+          dark: 'var(--color-secondary)',
+        },
+        accent: {
+          DEFAULT: 'var(--color-accent)',
+          light: 'var(--color-accent)',
+          dark: 'var(--color-accent)',
         },
         surface: {
-          light: '#f5f5f5',
-          dark: '#1e1e1e'
+          DEFAULT: 'var(--color-surface)',
+          light: 'var(--color-surface)',
+          dark: 'var(--color-surface)'
         }
       }
     },

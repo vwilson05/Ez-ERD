@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { NodeType, EdgeType, Column } from '../utils/types';
+import { NodeType, EdgeType, Column, ERDNode } from '../utils/types';
 import DDLGenerator from '../utils/DDLGenerator';
 import TableForm from './TableForm';
 import AIPrompt from './AIPrompt';
 import SnowflakeConnection from './SnowflakeConnection';
 
 interface SidebarProps {
-  nodes: NodeType[];
-  setNodes: (nodes: NodeType[]) => void;
+  nodes: ERDNode[];
+  setNodes: (nodes: ERDNode[]) => void;
   edges: EdgeType[];
   setEdges: (edges: EdgeType[]) => void;
   ddl: string;
@@ -53,6 +53,12 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
   
   const generateDDL = () => {
     if (nodes.length === 0) {
+      setDDL('');
+      return;
+    }
+    
+    const tableNodes = nodes.filter(node => node.type === 'table');
+    if (tableNodes.length === 0) {
       setDDL('');
       return;
     }
@@ -125,8 +131,8 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
         throw new Error('Invalid project format');
       }
       
-      // Update state
-      setNodes(project.nodes);
+      // Update state with proper type
+      setNodes(project.nodes as ERDNode[]);
       setEdges(project.edges);
       
       // Either use saved DDL or regenerate
@@ -225,11 +231,11 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
                 {nodes.length === 0 ? (
                   <p className="text-gray-500 dark:text-gray-400 text-sm">No tables added yet. Click "Add Table" to create your first table.</p>
                 ) : (
-                  nodes.map(node => (
+                  nodes.filter(node => node.type === 'table').map(node => (
                     <div key={node.id} className="p-2 border rounded dark:border-gray-700 text-sm">
                       <div className="font-medium dark:text-white">{node.data.label}</div>
                       <div className="text-gray-500 dark:text-gray-400 text-xs">
-                        {node.data.columns.length} column{node.data.columns.length !== 1 ? 's' : ''}
+                        {'columns' in node.data && `${node.data.columns.length} column${node.data.columns.length !== 1 ? 's' : ''}`}
                       </div>
                     </div>
                   ))

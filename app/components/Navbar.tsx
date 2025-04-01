@@ -1,15 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import ThemeSelector from './ThemeSelector';
+import { useTheme } from '../context/ThemeContext';
 
 export default function Navbar() {
-  const [isDarkMode, setIsDarkMode] = useState(true);
-
-  const toggleDarkMode = () => {
-    const htmlElement = document.documentElement;
-    htmlElement.classList.toggle('dark');
-    setIsDarkMode(!isDarkMode);
-  };
+  const { isDarkMode, toggleDarkMode } = useTheme();
 
   return (
     <nav className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-4">
@@ -18,7 +13,7 @@ export default function Navbar() {
           <h1 className="text-xl font-bold text-primary-dark dark:text-primary-light mr-2">EzERD</h1>
           <span className="text-sm text-gray-500 dark:text-gray-400">Simple ERD to Snowflake DDL</span>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2">
           <button
             onClick={toggleDarkMode}
             className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -33,8 +28,11 @@ export default function Navbar() {
               </svg>
             )}
           </button>
+          
+          <ThemeSelector />
+          
           <a
-            href="https://github.com/yourusername/ezerd"
+            href="https://github.com/vwilson05/Ez-ERD"
             target="_blank"
             rel="noopener noreferrer"
             className="text-gray-700 dark:text-gray-300 hover:text-primary-dark dark:hover:text-primary-light"

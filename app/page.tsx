@@ -1,15 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { ReactFlowProvider } from 'reactflow';
 import ERDCanvas from './components/ERDCanvas';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
-import { EdgeType, NodeType } from './utils/types';
+import { EdgeType, NodeType, ERDNode } from './utils/types';
 import DDLGenerator from './utils/DDLGenerator';
 import SnowflakeConnection from './components/SnowflakeConnection';
 
 export default function Home() {
-  const [nodes, setNodes] = useState<NodeType[]>([]);
+  const [nodes, setNodes] = useState<ERDNode[]>([]);
   const [edges, setEdges] = useState<EdgeType[]>([]);
   const [ddl, setDDL] = useState<string>('');
   const [editableDDL, setEditableDDL] = useState<string>('');
@@ -24,11 +25,16 @@ export default function Home() {
   // Generate DDL whenever nodes or edges change
   useEffect(() => {
     if (nodes.length > 0) {
-      const generator = new DDLGenerator(nodes, edges);
-      const generatedDDL = generator.generateSnowflakeDDL();
-      setDDL(generatedDDL);
-      // Reset modification flag when nodes/edges change
-      setIsDDLModified(false);
+      const tableNodes = nodes.filter(node => node.type === 'table');
+      if (tableNodes.length > 0) {
+        const generator = new DDLGenerator(nodes, edges);
+        const generatedDDL = generator.generateSnowflakeDDL();
+        setDDL(generatedDDL);
+        // Reset modification flag when nodes/edges change
+        setIsDDLModified(false);
+      } else {
+        setDDL('');
+      }
     } else {
       setDDL('');
     }
@@ -91,7 +97,9 @@ export default function Home() {
           <div className="flex-1 overflow-hidden">
             {activeTab === 'erd' ? (
               <div className="h-full bg-gray-50 dark:bg-gray-900">
-                <ERDCanvas nodes={nodes} setNodes={setNodes} edges={edges} setEdges={setEdges} />
+                <ReactFlowProvider>
+                  <ERDCanvas nodes={nodes} setNodes={setNodes} edges={edges} setEdges={setEdges} />
+                </ReactFlowProvider>
               </div>
             ) : (
               <div className="h-full overflow-auto p-6 bg-gray-50 dark:bg-gray-900">

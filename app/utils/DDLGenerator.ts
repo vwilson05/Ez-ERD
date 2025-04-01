@@ -1,11 +1,11 @@
-import { NodeType, EdgeType, Column, SnowflakeTable } from './types';
+import { NodeType, EdgeType, Column, SnowflakeTable, ERDNode } from './types';
 
 export default class DDLGenerator {
-  private nodes: NodeType[];
+  private nodes: ERDNode[];
   private edges: EdgeType[];
   private tables: SnowflakeTable[];
 
-  constructor(nodes: NodeType[], edges: EdgeType[]) {
+  constructor(nodes: ERDNode[], edges: EdgeType[]) {
     this.nodes = nodes;
     this.edges = edges;
     this.tables = this.nodesToTables();
@@ -15,7 +15,7 @@ export default class DDLGenerator {
    * Convert our ERD nodes to Snowflake table definitions
    */
   private nodesToTables(): SnowflakeTable[] {
-    return this.nodes.map(node => {
+    return this.nodes.filter(node => node.type === 'table').map(node => {
       const primaryKeys = node.data.columns
         .filter(col => col.isPrimaryKey)
         .map(col => col.name);
@@ -32,7 +32,10 @@ export default class DDLGenerator {
         name: node.data.label,
         columns: node.data.columns,
         primaryKey: primaryKeys.length > 0 ? primaryKeys : undefined,
-        foreignKeys: foreignKeys.length > 0 ? foreignKeys : undefined
+        foreignKeys: foreignKeys.length > 0 ? foreignKeys : undefined,
+        comment: node.data.comment,
+        tags: node.data.tags,
+        tableType: node.data.tableType || 'TABLE'
       };
     });
   }
@@ -66,7 +69,9 @@ export default class DDLGenerator {
    * Generate DDL for a single table
    */
   private generateTableDDL(table: SnowflakeTable): string {
-    let ddl = `CREATE OR REPLACE TABLE ${this.formatIdentifier(table.name)} (\n`;
+    // Handle different table types
+    const tableType = table.tableType || 'TABLE';
+    let ddl = `CREATE OR REPLACE ${tableType} ${this.formatIdentifier(table.name)} (\n`;
     
     // Column definitions
     const columnDefinitions = table.columns.map(column => {
@@ -75,6 +80,11 @@ export default class DDLGenerator {
       // Add NOT NULL constraint if not nullable
       if (!column.isNullable) {
         colDef += ' NOT NULL';
+      }
+      
+      // Add column comment if exists
+      if (column.comment) {
+        colDef += ` COMMENT '${this.escapeQuotes(column.comment)}'`;
       }
       
       return colDef;
@@ -88,7 +98,37 @@ export default class DDLGenerator {
       ddl += `,\n  PRIMARY KEY (${pkColumns})`;
     }
     
-    ddl += '\n);';
+    ddl += '\n)';
+    
+    // Add table comment if exists
+    if (table.comment) {
+      ddl += `\nCOMMENT = '${this.escapeQuotes(table.comment)}'`;
+    }
+    
+    // Special options for different table types
+    if (tableType === 'DYNAMIC_TABLE') {
+      ddl += `\nTARGET_LAG = '1 minute'`; // Default lag for dynamic tables
+    } else if (tableType === 'ICEBERG_TABLE') {
+      ddl += `\nWITH ICEBERG_CATALOG = 'SNOWFLAKE'`; // Default catalog for Iceberg tables
+    }
+    
+    // Add table tags if they exist
+    if (table.tags && table.tags.length > 0) {
+      ddl += `\nWITH TAG (${table.tags.map((tag: string) => `'${this.escapeQuotes(tag)}' = 'true'`).join(', ')})`;
+    }
+    
+    ddl += ';';
+    
+    // Generate column-level tags in separate statements
+    for (const column of table.columns) {
+      if (column.tags && column.tags.length > 0) {
+        ddl += `\n\nALTER TABLE ${this.formatIdentifier(table.name)} MODIFY COLUMN ${this.formatIdentifier(column.name)} SET TAG`;
+        column.tags.forEach((tag, index) => {
+          ddl += ` '${this.escapeQuotes(tag)}' = 'true'${index < column.tags!.length - 1 ? ',' : ''}`;
+        });
+        ddl += ';';
+      }
+    }
     
     return ddl;
   }
@@ -121,6 +161,13 @@ export default class DDLGenerator {
   }
 
   /**
+   * Escape single quotes in string literals
+   */
+  private escapeQuotes(str: string): string {
+    return str.replace(/'/g, "''");
+  }
+
+  /**
    * Check if a word is a Snowflake reserved word
    */
   private isReservedWord(word: string): boolean {
@@ -131,7 +178,8 @@ export default class DDLGenerator {
       'having', 'join', 'left', 'right', 'outer', 'inner', 'full', 'on',
       'union', 'all', 'as', 'distinct', 'limit', 'offset', 'with', 'database',
       'schema', 'warehouse', 'role', 'user', 'password', 'account', 'view',
-      'function', 'procedure', 'pipe', 'stage', 'file', 'format', 'sequence'
+      'function', 'procedure', 'pipe', 'stage', 'file', 'format', 'sequence',
+      'dynamic_table', 'iceberg_table'
     ];
     
     return reservedWords.includes(word.toLowerCase());

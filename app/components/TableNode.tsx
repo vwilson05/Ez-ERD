@@ -11,6 +11,7 @@ interface TableNodeProps extends NodeProps {
     label: string;
     columns: Column[];
     onColumnsChange?: (columns: Column[]) => void;
+    tableType?: 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE';
   };
   selected: boolean;
 }
@@ -25,8 +26,71 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
     dataType: 'VARCHAR',
     isPrimaryKey: false,
     isForeignKey: false,
-    isNullable: true
+    isNullable: true,
+    comment: '',
+    tags: []
   });
+
+  // Helper to get display type name
+  const getDisplayTypeName = (type?: string) => {
+    if (!type) return 'Table';
+    
+    switch (type) {
+      case 'VIEW': return 'View';
+      case 'MATERIALIZED_VIEW': return 'Materialized View';
+      case 'DYNAMIC_TABLE': return 'Dynamic Table';
+      case 'ICEBERG_TABLE': return 'Iceberg Table';
+      default: return 'Table';
+    }
+  };
+
+  // Get header color based on object type
+  const getHeaderColor = () => {
+    switch (data.tableType) {
+      case 'VIEW': return 'bg-teal-100 dark:bg-teal-800';
+      case 'MATERIALIZED_VIEW': return 'bg-purple-100 dark:bg-purple-800';
+      case 'DYNAMIC_TABLE': return 'bg-amber-100 dark:bg-amber-800';
+      case 'ICEBERG_TABLE': return 'bg-cyan-100 dark:bg-cyan-800';
+      default: return 'bg-gray-100 dark:bg-gray-700';
+    }
+  };
+
+  // Get icon for the object type
+  const getObjectTypeIcon = () => {
+    switch (data.tableType) {
+      case 'VIEW':
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+        );
+      case 'MATERIALIZED_VIEW':
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+        );
+      case 'DYNAMIC_TABLE':
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        );
+      case 'ICEBERG_TABLE':
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+        );
+      default:
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        );
+    }
+  };
 
   const startEditing = (column: Column) => {
     setEditingColumnId(column.id);
@@ -63,7 +127,9 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
       dataType: 'VARCHAR',
       isPrimaryKey: false,
       isForeignKey: false,
-      isNullable: true
+      isNullable: true,
+      comment: '',
+      tags: []
     });
   };
 
@@ -75,7 +141,9 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
       dataType: 'VARCHAR',
       isPrimaryKey: false,
       isForeignKey: false,
-      isNullable: true
+      isNullable: true,
+      comment: '',
+      tags: []
     });
   };
 
@@ -100,6 +168,22 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
     data.onColumnsChange?.(updatedColumns);
   };
 
+  const handleTagsChange = (tagsString: string, isNewColumn: boolean) => {
+    const tagsArray = tagsString.split(',').map(tag => tag.trim()).filter(tag => tag);
+    
+    if (isNewColumn) {
+      setNewColumn({
+        ...newColumn,
+        tags: tagsArray
+      });
+    } else if (editedColumn) {
+      setEditedColumn({
+        ...editedColumn,
+        tags: tagsArray
+      });
+    }
+  };
+
   return (
     <div className={`border-2 rounded-md overflow-hidden ${
       selected ? 'border-primary-dark dark:border-primary-light' : 'border-gray-300 dark:border-gray-600'
@@ -109,37 +193,43 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
         type="source"
         position={Position.Top}
         id={`${id}-top`}
-        className="w-3 h-3 !bg-blue-500 !border-2"
-        style={{ left: '50%' }}
+        className="w-5 h-5 !bg-blue-500 !border-2 !border-white dark:!border-white !z-30"
+        style={{ left: '50%', top: '-10px' }}
       />
       
       <Handle
         type="source"
         position={Position.Left}
         id={`${id}-left`}
-        className="w-3 h-3 !bg-blue-500 !border-2"
-        style={{ top: '50%' }}
+        className="w-5 h-5 !bg-blue-500 !border-2 !border-white dark:!border-white !z-30"
+        style={{ top: '50%', left: '-10px' }}
       />
       
       <Handle
         type="target"
         position={Position.Right}
         id={`${id}-right`}
-        className="w-3 h-3 !bg-green-500 !border-2"
-        style={{ top: '50%' }}
+        className="w-5 h-5 !bg-green-500 !border-2 !border-white dark:!border-white !z-30"
+        style={{ top: '50%', right: '-10px' }}
       />
       
       <Handle
         type="target"
         position={Position.Bottom}
         id={`${id}-bottom`}
-        className="w-3 h-3 !bg-green-500 !border-2"
-        style={{ left: '50%' }}
+        className="w-5 h-5 !bg-green-500 !border-2 !border-white dark:!border-white !z-30"
+        style={{ left: '50%', bottom: '-10px' }}
       />
       
       {/* Table Header */}
-      <div className="bg-gray-100 dark:bg-gray-700 p-2 font-semibold border-b border-gray-300 dark:border-gray-600">
-        {data.label}
+      <div className={`p-2 font-semibold border-b border-gray-300 dark:border-gray-600 ${getHeaderColor()}`}>
+        <div className="flex items-center justify-between">
+          <span>{data.label}</span>
+          <div className="flex items-center text-xs text-gray-700 dark:text-gray-300 ml-2">
+            {getObjectTypeIcon()}
+            <span className="ml-1">{getDisplayTypeName(data.tableType)}</span>
+          </div>
+        </div>
       </div>
       
       {/* Columns */}
@@ -199,6 +289,30 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
                     NULL
                   </label>
                 </div>
+                <div className="mt-2">
+                  <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                    Comment
+                  </label>
+                  <input 
+                    type="text" 
+                    value={editedColumn?.comment || ''}
+                    onChange={(e) => handleEditChange('comment', e.target.value)}
+                    placeholder="Optional column comment"
+                    className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div className="mt-2">
+                  <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                    Tags (comma separated)
+                  </label>
+                  <input 
+                    type="text" 
+                    value={editedColumn?.tags?.join(', ') || ''}
+                    onChange={(e) => handleTagsChange(e.target.value, false)}
+                    placeholder="tag1, tag2, tag3"
+                    className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  />
+                </div>
                 <div className="flex justify-end space-x-1">
                   <button 
                     onClick={cancelEditing}
@@ -236,6 +350,12 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
                   )}
                   {column.isNullable && (
                     <span className="text-gray-400 text-xs" title="Nullable">NULL</span>
+                  )}
+                  {column.comment && (
+                    <span className="text-green-500 text-xs" title={column.comment}>📝</span>
+                  )}
+                  {column.tags && column.tags.length > 0 && (
+                    <span className="text-purple-500 text-xs" title={column.tags.join(', ')}>🏷️</span>
                   )}
                 </div>
                 <button 
@@ -308,6 +428,30 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
                 />
                 NULL
               </label>
+            </div>
+            <div className="mt-2">
+              <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                Comment
+              </label>
+              <input 
+                type="text" 
+                value={newColumn.comment || ''}
+                onChange={(e) => handleNewColumnChange('comment', e.target.value)}
+                placeholder="Optional column comment"
+                className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div className="mt-2">
+              <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                Tags (comma separated)
+              </label>
+              <input 
+                type="text" 
+                value={newColumn.tags?.join(', ') || ''}
+                onChange={(e) => handleTagsChange(e.target.value, true)}
+                placeholder="tag1, tag2, tag3"
+                className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              />
             </div>
             <div className="flex justify-end space-x-1">
               <button 

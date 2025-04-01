@@ -1,12 +1,13 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { ThemeProvider } from './context/ThemeContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'EzERD - Simple ERD to DDL Converter',
-  description: 'Create entity relationship diagrams and convert them to Snowflake DDL',
+  title: 'EzERD - Simple ERD to Snowflake DDL',
+  description: 'Create Entity Relationship Diagrams and generate Snowflake DDL with AI assistance',
 };
 
 export default function RootLayout({
@@ -17,7 +18,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} min-h-screen bg-background-light dark:bg-background-dark`}>
-        {children}
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
