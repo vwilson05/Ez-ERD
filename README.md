@@ -5,10 +5,28 @@ EzERD is a minimalist tool for creating Entity Relationship Diagrams (ERDs) and 
 ## Features
 
 - **Visual ERD Editor**: Drag-and-drop interface for creating tables and relationships
+  - **In-line Editing**: Edit table fields directly on the ERD canvas
+  - **Multi-point Connections**: Connect relationships from any side of table boxes
+  - **Auto-sizing Tables**: Tables automatically expand to fit their content
+
 - **Snowflake DDL Generation**: Instantly convert your ERD to Snowflake-compatible DDL
+  - **Edit & Execute**: Modify generated DDL with instant updates
+  - **Snowflake Integration**: Connect to your Snowflake account and execute DDL directly
+
 - **AI Assistant**: Generate complete database schemas from plain English descriptions
+  - **Conversation History**: Maintain context across prompts for iterative design
+  - **Intelligent Suggestions**: Get AI help refining your database model
+
+- **Data Modeling Templates**: Quickly create tables using industry-standard patterns
+  - **Kimball Dimensional Models**: Type 1 and Type 2 dimensions, fact tables
+  - **Data Vault Models**: Hubs, Links, and Satellites for enterprise data warehousing
+
 - **Reverse Engineering**: Import Snowflake DDL and visualize the corresponding ERD
-- **Dark Mode**: Easy on the eyes with a modern dark interface
+
+- **Enhanced User Experience**:
+  - **Dark & Light Modes**: Toggle between comfortable viewing options
+  - **Responsive Design**: Works on various screen sizes
+  - **Visual Feedback**: Clear indications of relationships and table structures
 
 ## Getting Started
 
@@ -21,8 +39,8 @@ EzERD is a minimalist tool for creating Entity Relationship Diagrams (ERDs) and 
 
 1. Clone the repository
    ```
-   git clone https://github.com/yourusername/ezerd.git
-   cd ezerd
+   git clone https://github.com/vwilson05/Ez-ERD.git
+   cd Ez-ERD
    ```
 
 2. Install dependencies
@@ -42,15 +60,24 @@ EzERD is a minimalist tool for creating Entity Relationship Diagrams (ERDs) and 
 ### Creating an ERD
 
 1. Click "Add Table" in the sidebar
-2. Fill in the table name and define columns
-3. Add relationships between tables by dragging from one column handle to another
-4. Generate Snowflake DDL with one click
+2. Create a custom table or use one of the pre-built templates (Kimball, Data Vault)
+3. Add or edit columns directly on the ERD canvas by clicking on them
+4. Create relationships by dragging from one table to another
+5. Generate Snowflake DDL with one click
 
 ### Using AI Assistance
 
-1. Click on the "AI Assist" tab
+1. Click on the "AI Assistant" tab
 2. Describe your database requirements in plain English
 3. The AI will generate both the ERD and the Snowflake DDL
+4. Continue the conversation to refine your design with follow-up questions
+
+### Direct Snowflake Integration
+
+1. Navigate to the "DDL & Execution" tab
+2. Review and edit the generated DDL
+3. Connect to your Snowflake account with the Snowflake tab
+4. Execute the DDL directly in your Snowflake environment
 
 ### Importing Existing DDL
 
@@ -65,6 +92,7 @@ EzERD is a minimalist tool for creating Entity Relationship Diagrams (ERDs) and 
 - **ERD Visualization**: ReactFlow
 - **State Management**: React Hooks and Context
 - **AI Integration**: OpenAI API
+- **Database Connectivity**: Snowflake JavaScript API (browser)
 
 ## Contributing
 
