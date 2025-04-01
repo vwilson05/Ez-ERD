@@ -1,0 +1,355 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { NodeType, EdgeType, Column } from '../utils/types';
+import DDLGenerator from '../utils/DDLGenerator';
+import TableForm from './TableForm';
+import AIPrompt from './AIPrompt';
+import SnowflakeConnection from './SnowflakeConnection';
+
+interface SidebarProps {
+  nodes: NodeType[];
+  setNodes: (nodes: NodeType[]) => void;
+  edges: EdgeType[];
+  setEdges: (edges: EdgeType[]) => void;
+  ddl: string;
+  setDDL: (ddl: string) => void;
+  setActiveTab?: (tab: 'erd' | 'ddl') => void;
+}
+
+export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL, setActiveTab }: SidebarProps) {
+  const [activeTab, setActiveTabState] = useState<'tables' | 'ai' | 'import' | 'export' | 'snowflake'>('tables');
+  const [showCreateTable, setShowCreateTable] = useState(false);
+  const [importDDL, setImportDDL] = useState('');
+  const [importJson, setImportJson] = useState('');
+  const [editableDDL, setEditableDDL] = useState(ddl);
+  
+  // Keep the editable DDL in sync with the actual DDL
+  useEffect(() => {
+    setEditableDDL(ddl);
+  }, [ddl]);
+  
+  const addNewTable = (tableName: string, columns: Column[]) => {
+    const newNode: NodeType = {
+      id: uuidv4(),
+      type: 'table',
+      position: { 
+        x: Math.random() * 300, 
+        y: Math.random() * 300
+      },
+      data: {
+        label: tableName,
+        columns: columns,
+      },
+    };
+    
+    setNodes([...nodes, newNode]);
+    setShowCreateTable(false);
+    
+    // Generate DDL after adding a new table
+    setTimeout(() => generateDDL(), 100);
+  };
+  
+  const generateDDL = () => {
+    if (nodes.length === 0) {
+      setDDL('');
+      return;
+    }
+    
+    const ddlGenerator = new DDLGenerator(nodes, edges);
+    const generatedDDL = ddlGenerator.generateSnowflakeDDL();
+    setDDL(generatedDDL);
+  };
+  
+  // Function to handle importing DDL
+  const handleImportDDL = () => {
+    // In a real implementation, this would parse the DDL and create nodes/edges
+    alert('DDL import functionality would be implemented here');
+    setImportDDL('');
+  };
+  
+  // Function to handle DDL changes
+  const handleDDLChange = (newDDL: string) => {
+    setEditableDDL(newDDL);
+  };
+  
+  // Function to apply DDL changes
+  const applyDDLChanges = () => {
+    setDDL(editableDDL);
+    // In a full implementation, we would parse the DDL here and update the nodes/edges
+    alert('In a complete implementation, this would parse the DDL and update the ERD');
+  };
+  
+  // Function to save the current ERD as JSON
+  const saveProject = () => {
+    try {
+      const project = {
+        nodes,
+        edges,
+        ddl
+      };
+      
+      const jsonString = JSON.stringify(project, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      // Create download link and trigger click
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ezerd-project-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Cleanup
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error saving project:', error);
+      alert('Failed to save project');
+    }
+  };
+  
+  // Function to load a saved project
+  const loadProject = () => {
+    try {
+      if (!importJson.trim()) {
+        alert('Please paste your project JSON');
+        return;
+      }
+      
+      const project = JSON.parse(importJson);
+      
+      // Validate project data
+      if (!project.nodes || !Array.isArray(project.nodes) || !project.edges || !Array.isArray(project.edges)) {
+        throw new Error('Invalid project format');
+      }
+      
+      // Update state
+      setNodes(project.nodes);
+      setEdges(project.edges);
+      
+      // Either use saved DDL or regenerate
+      if (project.ddl) {
+        setDDL(project.ddl);
+      } else {
+        const ddlGenerator = new DDLGenerator(project.nodes, project.edges);
+        setDDL(ddlGenerator.generateSnowflakeDDL());
+      }
+      
+      // Reset form and switch to tables tab
+      setImportJson('');
+      setActiveTabState('tables');
+      
+      alert('Project loaded successfully');
+    } catch (error) {
+      console.error('Error loading project:', error);
+      alert('Failed to load project: Invalid JSON format');
+    }
+  };
+  
+  return (
+    <div className="w-80 bg-white dark:bg-gray-800 border-r dark:border-gray-700 flex flex-col h-full">
+      <div className="border-b dark:border-gray-700">
+        <nav className="flex overflow-x-auto p-2 space-x-2">
+          <button
+            onClick={() => setActiveTabState('tables')}
+            className={`px-3 py-1.5 text-sm rounded-md ${
+              activeTab === 'tables'
+                ? 'bg-primary-light dark:bg-primary-dark text-white'
+                : 'text-gray-700 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-700'
+            }`}
+          >
+            Tables
+          </button>
+          <button
+            onClick={() => setActiveTabState('ai')}
+            className={`px-3 py-1.5 text-sm rounded-md ${
+              activeTab === 'ai'
+                ? 'bg-primary-light dark:bg-primary-dark text-white'
+                : 'text-gray-700 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-700'
+            }`}
+          >
+            AI Assistant
+          </button>
+          <button
+            onClick={() => setActiveTabState('import')}
+            className={`px-3 py-1.5 text-sm rounded-md ${
+              activeTab === 'import'
+                ? 'bg-primary-light dark:bg-primary-dark text-white'
+                : 'text-gray-700 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-700'
+            }`}
+          >
+            Import
+          </button>
+          <button
+            onClick={() => setActiveTabState('export')}
+            className={`px-3 py-1.5 text-sm rounded-md ${
+              activeTab === 'export'
+                ? 'bg-primary-light dark:bg-primary-dark text-white'
+                : 'text-gray-700 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-700'
+            }`}
+          >
+            Export
+          </button>
+          <button
+            onClick={() => setActiveTabState('snowflake')}
+            className={`px-3 py-1.5 text-sm rounded-md ${
+              activeTab === 'snowflake'
+                ? 'bg-primary-light dark:bg-primary-dark text-white'
+                : 'text-gray-700 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-700'
+            }`}
+          >
+            Snowflake
+          </button>
+        </nav>
+      </div>
+
+      <div className="flex-1 overflow-auto p-4">
+        {activeTab === 'tables' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold dark:text-white">Tables</h3>
+              <button
+                onClick={() => setShowCreateTable(true)}
+                className="bg-primary-light hover:bg-primary dark:bg-primary-dark hover:dark:bg-primary text-white px-3 py-1 rounded text-sm"
+              >
+                Add Table
+              </button>
+            </div>
+            
+            {showCreateTable ? (
+              <TableForm onSave={addNewTable} onCancel={() => setShowCreateTable(false)} />
+            ) : (
+              <div className="space-y-2">
+                {nodes.length === 0 ? (
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">No tables added yet. Click "Add Table" to create your first table.</p>
+                ) : (
+                  nodes.map(node => (
+                    <div key={node.id} className="p-2 border rounded dark:border-gray-700 text-sm">
+                      <div className="font-medium dark:text-white">{node.data.label}</div>
+                      <div className="text-gray-500 dark:text-gray-400 text-xs">
+                        {node.data.columns.length} column{node.data.columns.length !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  ))
+                )}
+                
+                {nodes.length > 0 && (
+                  <button
+                    onClick={generateDDL}
+                    className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm"
+                  >
+                    Generate Snowflake DDL
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        
+        {activeTab === 'ai' && (
+          <AIPrompt 
+            nodes={nodes} 
+            setNodes={setNodes} 
+            edges={edges} 
+            setEdges={setEdges} 
+            setDDL={setDDL}
+            setActiveTab={setActiveTab} 
+          />
+        )}
+        
+        {activeTab === 'import' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold dark:text-white">Import</h3>
+            
+            <div className="border-b pb-4 mb-4">
+              <h4 className="font-medium text-sm mb-2">Load Saved Project</h4>
+              <textarea
+                className="w-full h-40 p-2 border rounded dark:border-gray-600 bg-white dark:bg-gray-900 text-sm font-mono"
+                placeholder="Paste saved project JSON here..."
+                value={importJson}
+                onChange={(e) => setImportJson(e.target.value)}
+              />
+              <button
+                onClick={loadProject}
+                className="w-full mt-2 bg-primary-light hover:bg-primary dark:bg-primary-dark hover:dark:bg-primary text-white px-3 py-2 rounded text-sm"
+                disabled={!importJson.trim()}
+              >
+                Load Project
+              </button>
+            </div>
+            
+            <div>
+              <h4 className="font-medium text-sm mb-2">Import DDL</h4>
+              <textarea
+                className="w-full h-40 p-2 border rounded dark:border-gray-600 bg-white dark:bg-gray-900 text-sm font-mono"
+                placeholder="Paste Snowflake DDL here..."
+                value={importDDL}
+                onChange={(e) => setImportDDL(e.target.value)}
+              />
+              <button
+                onClick={handleImportDDL}
+                className="w-full mt-2 bg-primary-light hover:bg-primary dark:bg-primary-dark hover:dark:bg-primary text-white px-3 py-2 rounded text-sm"
+                disabled={!importDDL.trim()}
+              >
+                Import DDL
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'export' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold dark:text-white">Export</h3>
+            
+            <div className="border-b pb-4 mb-4">
+              <h4 className="font-medium text-sm mb-2">Save Project</h4>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                Save your current ERD design as a JSON file that you can load later.
+              </p>
+              <button
+                onClick={saveProject}
+                className="w-full bg-primary-light hover:bg-primary dark:bg-primary-dark hover:dark:bg-primary text-white px-3 py-2 rounded text-sm"
+                disabled={nodes.length === 0}
+              >
+                Download Project JSON
+              </button>
+            </div>
+            
+            <div>
+              <h4 className="font-medium text-sm mb-2">View Generated DDL</h4>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                Go to the DDL & Execution tab to view, edit, and execute the generated Snowflake DDL.
+              </p>
+              <button
+                onClick={() => setActiveTab?.('ddl')}
+                className="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm"
+                disabled={nodes.length === 0}
+              >
+                Go to DDL & Execution
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'snowflake' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold dark:text-white">Snowflake Integration</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Connect to your Snowflake account to execute the generated DDL. Your credentials are stored securely in your browser.
+            </p>
+            <SnowflakeConnection 
+              ddl={ddl}
+              onExecutionComplete={(result) => {
+                if (result.status === 'success') {
+                  alert('DDL executed successfully in Snowflake!');
+                }
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+} 
