@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { NodeType, EdgeType, Column, ERDNode } from '../utils/types';
 import DDLGenerator from '../utils/DDLGenerator';
 import TableForm from './TableForm';
 import AIPrompt from './AIPrompt';
 import SnowflakeConnection from './SnowflakeConnection';
+import { Editor } from '@monaco-editor/react';
 
 interface SidebarProps {
   nodes: ERDNode[];
@@ -24,12 +25,69 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
   const [importDDL, setImportDDL] = useState('');
   const [importJson, setImportJson] = useState('');
   const [editableDDL, setEditableDDL] = useState(ddl);
+  const [showNewTableForm, setShowNewTableForm] = useState(false);
+  const [editingTable, setEditingTable] = useState<NodeType | null>(null);
+  const [isEditorDirty, setIsEditorDirty] = useState(false);
   
   // Keep the editable DDL in sync with the actual DDL
   useEffect(() => {
     setEditableDDL(ddl);
   }, [ddl]);
   
+  // Filter nodes to only include tables
+  const tables = useMemo(() => 
+    nodes.filter(node => node.type === 'table') as NodeType[],
+  [nodes]);
+
+  // Handle editor content change
+  const handleEditorChange = useCallback((value: string) => {
+    setIsEditorDirty(true);
+    setDDL(value);
+  }, [setDDL]);
+
+  // Delete a table node
+  const handleDeleteTable = useCallback((nodeId: string) => {
+    if (window.confirm('Are you sure you want to delete this object? This cannot be undone.')) {
+      // Remove the node
+      const updatedNodes = nodes.filter(node => node.id !== nodeId);
+      setNodes(updatedNodes);
+      
+      // Remove connected edges
+      const updatedEdges = edges.filter(
+        edge => edge.source !== nodeId && edge.target !== nodeId
+      );
+      setEdges(updatedEdges);
+    }
+  }, [nodes, edges, setNodes, setEdges]);
+
+  // Open the edit form for a table
+  const handleEditTable = useCallback((table: NodeType) => {
+    setEditingTable(table);
+  }, []);
+
+  // Handle saving the edited table
+  const handleSaveEditedTable = useCallback((tableName: string, columns: Column[], tableType?: string, tableComment?: string) => {
+    if (editingTable) {
+      const updatedNodes = nodes.map(node => 
+        node.id === editingTable.id 
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                label: tableName,
+                columns: columns,
+                ...(tableType ? { tableType } : {}),
+                ...(tableComment !== undefined ? { comment: tableComment } : {})
+              }
+            }
+          : node
+      ) as ERDNode[];
+      
+      setNodes(updatedNodes);
+      setEditingTable(null);
+    }
+  }, [editingTable, nodes, setNodes]);
+
   const addNewTable = (tableName: string, columns: Column[], tableType?: string) => {
     const newNode: NodeType = {
       id: uuidv4(),
@@ -218,72 +276,63 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-semibold dark:text-white">Objects</h3>
               <button
-                onClick={() => setShowCreateTable(true)}
+                onClick={() => setShowNewTableForm(true)}
                 className="bg-primary-light hover:bg-primary dark:bg-primary-dark hover:dark:bg-primary text-white px-3 py-1 rounded text-sm"
               >
                 Add Object
               </button>
             </div>
             
-            {showCreateTable ? (
-              <TableForm onSave={addNewTable} onCancel={() => setShowCreateTable(false)} />
-            ) : (
-              <div className="space-y-2">
-                {nodes.length === 0 ? (
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">No objects added yet. Click "Add Object" to create your first table or view.</p>
-                ) : (
-                  nodes.filter(node => node.type === 'table').map(node => (
-                    <div key={node.id} className="p-2 border rounded dark:border-gray-700 text-sm">
-                      <div className="flex justify-between items-center">
-                        <div className="font-medium dark:text-white">{node.data.label}</div>
-                        <div className="flex items-center">
-                          {node.data.tableType && node.data.tableType !== 'TABLE' && (
-                            <span className="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full mr-2">
-                              {node.data.tableType.replace('_', ' ')}
-                            </span>
-                          )}
-                          <button
-                            onClick={() => {
-                              if (window.confirm(`Are you sure you want to delete "${node.data.label}"? This action cannot be undone.`)) {
-                                const updatedNodes = nodes.filter(n => n.id !== node.id);
-                                setNodes(updatedNodes);
-                                
-                                // Also delete any edges connected to this node
-                                const updatedEdges = edges.filter(
-                                  edge => edge.source !== node.id && edge.target !== node.id
-                                );
-                                setEdges(updatedEdges);
-                                
-                                // Regenerate DDL
-                                setTimeout(() => generateDDL(), 100);
-                              }
-                            }}
-                            className="text-red-500 hover:text-red-700 p-1"
-                            title="Delete object"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+            <div className="space-y-2">
+              {tables.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400 text-sm">No objects added yet. Click "Add Object" to create your first table or view.</p>
+              ) : (
+                tables.map((table) => (
+                  <div
+                    key={table.id}
+                    className="p-2 border rounded-md border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 group"
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="font-medium">{table.data.label}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {table.data.tableType || 'TABLE'} • {table.data.columns.length} columns
                         </div>
                       </div>
-                      <div className="text-gray-500 dark:text-gray-400 text-xs">
-                        {'columns' in node.data && `${node.data.columns.length} column${node.data.columns.length !== 1 ? 's' : ''}`}
+                      <div className="flex space-x-1">
+                        <button
+                          onClick={() => handleEditTable(table)}
+                          className="p-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                          title="Edit object"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTable(table.id)}
+                          className="p-1 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                          title="Delete object"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </div>
                     </div>
-                  ))
-                )}
-                
-                {nodes.length > 0 && (
-                  <button
-                    onClick={generateDDL}
-                    className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm"
-                  >
-                    Generate Snowflake DDL
-                  </button>
-                )}
-              </div>
-            )}
+                  </div>
+                ))
+              )}
+              
+              {tables.length > 0 && (
+                <button
+                  onClick={generateDDL}
+                  className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded text-sm"
+                >
+                  Generate Snowflake DDL
+                </button>
+              )}
+            </div>
           </div>
         )}
         
@@ -389,6 +438,65 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
           </div>
         )}
       </div>
+
+      {showNewTableForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Create New Object</h2>
+            
+            <TableForm
+              onSave={(tableName, columns, tableType, tableComment) => {
+                // Create a new table node
+                const newNode: NodeType = {
+                  id: `table-${Date.now()}`,
+                  type: 'table',
+                  position: { x: 100, y: 100 },
+                  data: {
+                    label: tableName,
+                    columns: columns,
+                    tableType: tableType as 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE',
+                    comment: tableComment
+                  }
+                };
+                
+                // Update nodes by creating a new array
+                setNodes([...nodes, newNode]);
+                setShowNewTableForm(false);
+              }}
+              onCancel={() => setShowNewTableForm(false)}
+              existingTables={tables.map(node => ({
+                id: node.id,
+                label: node.data.label,
+                columns: node.data.columns
+              }))}
+            />
+          </div>
+        </div>
+      )}
+
+      {editingTable && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Edit Object</h2>
+            
+            <TableForm
+              onSave={handleSaveEditedTable}
+              onCancel={() => setEditingTable(null)}
+              existingTables={tables.map(node => ({
+                id: node.id,
+                label: node.data.label,
+                columns: node.data.columns
+              }))}
+              initialValues={{
+                tableName: editingTable.data.label,
+                columns: editingTable.data.columns,
+                tableType: editingTable.data.tableType,
+                tableComment: editingTable.data.comment
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

@@ -80,26 +80,6 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
 
-  // Handle column changes in a table node
-  const handleColumnsChange = useCallback((nodeId: string, columns: Column[]) => {
-    // Update the parent component's state
-    const updatedNodes = nodes.map(node => 
-      node.id === nodeId && node.type === 'table'
-        ? { ...node, data: { ...node.data, columns } } 
-        : node
-    );
-    setNodes(updatedNodes);
-    
-    // Update ReactFlow's state
-    setReactFlowNodes(nodes => 
-      nodes.map(node => 
-        node.id === nodeId 
-          ? { ...node, data: { ...node.data, columns, onColumnsChange: (cols: Column[]) => handleColumnsChange(nodeId, cols) } } 
-          : node
-      )
-    );
-  }, [nodes, setNodes, setReactFlowNodes]);
-
   // Handle node deletion
   const handleNodeDelete = useCallback((nodeId: string) => {
     // Remove the node from the parent component's state
@@ -120,6 +100,7 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
         ? { ...node, data: { ...node.data, comment } } 
         : node
     ) as ERDNode[];
+    
     setNodes(updatedNodes);
     
     // Update ReactFlow's state
@@ -132,6 +113,64 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
     );
   }, [nodes, setNodes, setReactFlowNodes]);
 
+  // Handle column changes in a table node
+  const handleColumnsChange = useCallback((nodeId: string, columns: Column[], tableType?: string) => {
+    console.log(`Updating node ${nodeId} with tableType: ${tableType || 'not provided'}`);
+    
+    // Update the parent component's state
+    const updatedNodes = nodes.map(node => {
+      if (node.id === nodeId && node.type === 'table') {
+        console.log(`Before update: Node ${nodeId} tableType=${node.data.tableType || 'undefined'}`);
+        
+        // Create updated node with new columns and tableType if provided
+        const updatedNode = { 
+          ...node, 
+          // For type changes, recreate the entire data object to ensure React detects the change
+          data: { 
+            ...node.data, 
+            columns,
+            // Always update tableType when provided
+            ...(tableType !== undefined ? { tableType } : {}),
+          }
+        };
+        
+        console.log(`After update: Node ${nodeId} tableType=${updatedNode.data.tableType || 'undefined'}`);
+        return updatedNode;
+      }
+      return node;
+    }) as ERDNode[];
+    
+    // Force a complete update by creating a new nodes array
+    // This ensures React detects the change and triggers a re-render
+    setNodes([...updatedNodes]);
+    
+    // Update ReactFlow's state with a completely new node object
+    setReactFlowNodes(prevNodes => {
+      return prevNodes.map(node => {
+        if (node.id === nodeId) {
+          // Force a complete node replacement to ensure the changes are detected
+          const newNode = { 
+            ...node, 
+            data: { 
+              ...node.data, 
+              columns,
+              // Always update tableType when provided
+              ...(tableType !== undefined ? { tableType } : {}),
+              // Reattach all callbacks
+              onColumnsChange: (cols: Column[], type?: string) => handleColumnsChange(nodeId, cols, type),
+              onDelete: (nodeId: string) => handleNodeDelete(nodeId),
+              onCommentChange: (comment: string) => handleCommentChange(nodeId, comment),
+              // Add a timestamp to force rerender
+              _updateTimestamp: Date.now()
+            } 
+          };
+          return newNode;
+        }
+        return node;
+      });
+    });
+  }, [nodes, setNodes, setReactFlowNodes, handleNodeDelete, handleCommentChange]);
+
   // Prepare nodes with callbacks
   useEffect(() => {
     const nodesWithCallback = nodes.map(node => {
@@ -140,7 +179,7 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
           ...node,
           data: {
             ...node.data,
-            onColumnsChange: (columns: Column[]) => handleColumnsChange(node.id, columns),
+            onColumnsChange: (columns: Column[], tableType?: string) => handleColumnsChange(node.id, columns, tableType),
             onDelete: (nodeId: string) => handleNodeDelete(nodeId),
             onCommentChange: (comment: string) => handleCommentChange(node.id, comment)
           }
@@ -150,8 +189,7 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
           ...node,
           data: {
             ...node.data,
-            onDelete: (nodeId: string) => handleNodeDelete(nodeId),
-            onCommentChange: (comment: string) => handleCommentChange(node.id, comment)
+            onDelete: (nodeId: string) => handleNodeDelete(nodeId)
           }
         };
       }
@@ -296,8 +334,11 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
   const exportAsPng = useCallback(() => {
     if (!reactFlowWrapper.current) return;
     
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const bgColor = isDarkMode ? '#111827' : '#ffffff';
+    
     toPng(reactFlowWrapper.current, { 
-      backgroundColor: '#ffffff',
+      backgroundColor: bgColor,
       quality: 1,
       pixelRatio: 2
     })
@@ -316,8 +357,11 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
   const exportAsPdf = useCallback(() => {
     if (!reactFlowWrapper.current) return;
     
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    const bgColor = isDarkMode ? '#111827' : '#ffffff';
+    
     toJpeg(reactFlowWrapper.current, { 
-      backgroundColor: '#ffffff',
+      backgroundColor: bgColor,
       quality: 0.95,
       pixelRatio: 2
     })
@@ -457,16 +501,17 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
       data: {
         label: newDomainData.label,
         color: newDomainData.color,
-        opacity: newDomainData.opacity
+        opacity: newDomainData.opacity,
+        onDelete: (nodeId: string) => handleNodeDelete(nodeId)
       }
     };
     
     setNodes(prevNodes => [...prevNodes, newNode]);
     setShowDomainModal(false);
-  }, [newDomainPosition, newDomainData, setNodes]);
+  }, [newDomainPosition, newDomainData, setNodes, handleNodeDelete]);
 
   return (
-    <div className="h-full w-full bg-surface-light dark:bg-surface-dark rounded-lg overflow-hidden relative">
+    <div className="h-full w-full bg-surface-light dark:bg-gray-900 rounded-lg overflow-hidden relative">
       <div ref={reactFlowWrapper} className="h-full w-full [&_.react-flow__node-domain]:!z-[-1000] [&_.react-flow__node-table]:!z-10">
         <ReactFlow
           nodes={reactFlowNodes}
@@ -477,8 +522,9 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
           onNodeDragStop={onNodeDragStop}
           onEdgeClick={onEdgeClick}
           onPaneClick={() => {
-            // Close context menu on pane click
+            // Close context menu and export options on pane click
             setShowContextMenu(false);
+            setShowExportOptions(false);
           }}
           onContextMenu={onCanvasContextMenu}
           nodeTypes={nodeTypes}
@@ -487,9 +533,9 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
           elementsSelectable={true}
           nodesConnectable={true}
           style={{ background: 'var(--surface-light)' }}
-          className="dark:bg-surface-dark [&_.react-flow__handle]:!visible [&_.react-flow__handle]:opacity-100 [&_.react-flow__handle]:pointer-events-auto"
+          className="dark:bg-gray-900 [&_.react-flow__handle]:!visible [&_.react-flow__handle]:opacity-100 [&_.react-flow__handle]:pointer-events-auto"
         >
-          <Background />
+          <Background color="#888" gap={16} />
           <Controls />
           
           {/* Export button */}

@@ -9,25 +9,37 @@ interface TableFormProps {
   onSave: (tableName: string, columns: Column[], tableType?: string, tableComment?: string) => void;
   onCancel: () => void;
   existingTables?: { id: string; label: string; columns: Column[] }[];
+  initialValues?: {
+    tableName: string;
+    columns: Column[];
+    tableType?: string;
+    tableComment?: string;
+  };
 }
 
-export default function TableForm({ onSave, onCancel, existingTables = [] }: TableFormProps) {
-  const [formMode, setFormMode] = useState<'custom' | 'template'>('custom');
+export default function TableForm({ onSave, onCancel, existingTables = [], initialValues }: TableFormProps) {
+  const [formMode, setFormMode] = useState<'custom' | 'template'>(initialValues ? 'custom' : 'custom');
   const [selectedTemplate, setSelectedTemplate] = useState<TableTemplate | null>(null);
-  const [tableName, setTableName] = useState('');
-  const [tableType, setTableType] = useState<'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE'>('TABLE');
-  const [tableComment, setTableComment] = useState('');
-  const [columns, setColumns] = useState<Column[]>([
-    {
-      id: uuidv4(),
-      name: '',
-      dataType: 'VARCHAR',
-      isPrimaryKey: false,
-      isForeignKey: false,
-      isNullable: true,
-      comment: '',
-    },
-  ]);
+  
+  const [tableName, setTableName] = useState(initialValues?.tableName || '');
+  const [tableType, setTableType] = useState<'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE'>(
+    (initialValues?.tableType as any) || 'TABLE'
+  );
+  const [tableComment, setTableComment] = useState(initialValues?.tableComment || '');
+  
+  const [columns, setColumns] = useState<Column[]>(
+    initialValues?.columns || [
+      {
+        id: uuidv4(),
+        name: '',
+        dataType: 'VARCHAR',
+        isPrimaryKey: false,
+        isForeignKey: false,
+        isNullable: true,
+        comment: '',
+      },
+    ]
+  );
 
   // Group templates by category
   const groupedTemplates = tableTemplates.reduce<Record<string, TableTemplate[]>>((acc, template) => {

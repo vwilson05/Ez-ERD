@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { Column } from '../utils/types';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,7 +10,7 @@ interface TableNodeProps extends NodeProps {
   data: {
     label: string;
     columns: Column[];
-    onColumnsChange?: (columns: Column[]) => void;
+    onColumnsChange?: (columns: Column[], tableType?: string) => void;
     tableType?: 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW' | 'DYNAMIC_TABLE' | 'ICEBERG_TABLE';
     onDelete?: (nodeId: string) => void;
     comment?: string;
@@ -38,7 +38,33 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
     comment: '',
     tags: []
   });
-
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [isEditingType, setIsEditingType] = useState(false);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [tableType, setTableType] = useState<string>(data.tableType || 'TABLE');
+  
+  // For drag and drop functionality
+  const dragItem = useRef<number | null>(null);
+  const draggedOverItem = useRef<number | null>(null);
+  
+  // Available table types
+  const tableTypes = [
+    'TABLE',
+    'VIEW',
+    'MATERIALIZED_VIEW',
+    'DYNAMIC_TABLE',
+    'ICEBERG_TABLE'
+  ];
+  
+  // Update the tableType state when props change
+  useEffect(() => {
+    if (data.tableType !== tableType) {
+      console.log(`TableNode ${id} updating tableType from ${tableType} to ${data.tableType}`);
+      setTableType(data.tableType || 'TABLE');
+    }
+  }, [data.tableType, id, tableType]);
+  
   // Helper to get display type name
   const getDisplayTypeName = (type?: string) => {
     if (!type) return 'Table';
@@ -54,7 +80,7 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
 
   // Get header color based on object type
   const getHeaderColor = () => {
-    switch (data.tableType) {
+    switch (tableType) {
       case 'VIEW': return 'bg-teal-100 dark:bg-teal-800';
       case 'MATERIALIZED_VIEW': return 'bg-purple-100 dark:bg-purple-800';
       case 'DYNAMIC_TABLE': return 'bg-amber-100 dark:bg-amber-800';
@@ -65,7 +91,7 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
 
   // Get icon for the object type
   const getObjectTypeIcon = () => {
-    switch (data.tableType) {
+    switch (tableType) {
       case 'VIEW':
         return (
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -100,7 +126,8 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
     }
   };
 
-  const startEditing = (column: Column) => {
+  const startEditing = (column: Column, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent node selection/dragging when clicking column
     setEditingColumnId(column.id);
     setEditedColumn({...column});
   };
@@ -110,7 +137,7 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
       const updatedColumns = data.columns.map(col => 
         col.id === editingColumnId ? editedColumn : col
       );
-      data.onColumnsChange?.(updatedColumns);
+      data.onColumnsChange?.(updatedColumns, tableType);
     }
     setEditingColumnId(null);
     setEditedColumn(null);
@@ -127,7 +154,7 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
       id: uuidv4()
     };
     const updatedColumns = [...data.columns, columnToAdd];
-    data.onColumnsChange?.(updatedColumns);
+    data.onColumnsChange?.(updatedColumns, tableType);
     setIsAddingColumn(false);
     setNewColumn({
       id: '',
@@ -173,7 +200,7 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
 
   const deleteColumn = (columnId: string) => {
     const updatedColumns = data.columns.filter(col => col.id !== columnId);
-    data.onColumnsChange?.(updatedColumns);
+    data.onColumnsChange?.(updatedColumns, tableType);
   };
 
   const handleTagsChange = (tagsString: string, isNewColumn: boolean) => {
@@ -192,10 +219,148 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
     }
   };
 
+  // Handle column reordering
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    // This is crucial for preventing the event from bubbling up to ReactFlow
+    e.stopPropagation();
+    e.preventDefault();
+    
+    // Store the column being dragged
+    setDraggedIndex(index);
+    setIsDragging(true);
+    
+    // Use setTimeout to prevent ReactFlow from interfering with the drag
+    setTimeout(() => {
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', index.toString());
+      }
+    }, 10);
+  };
+  
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    // Only update if dragging over a different column
+    if (draggedIndex !== index) {
+      setDragOverIndex(index);
+    }
+    
+    return false;
+  };
+  
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+  
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setDragOverIndex(null);
+  };
+  
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>, dropIndex: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    console.log(`Dropping column from index ${draggedIndex} to ${dropIndex}`);
+    
+    // Only proceed if we have a valid draggedIndex
+    if (draggedIndex !== null && draggedIndex !== dropIndex) {
+      const newColumns = [...data.columns];
+      const [movedColumn] = newColumns.splice(draggedIndex, 1);
+      newColumns.splice(dropIndex, 0, movedColumn);
+      
+      // Update columns with the new order
+      data.onColumnsChange?.(newColumns, tableType);
+    }
+    
+    // Reset state
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    setIsDragging(false);
+  };
+  
+  const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    // Reset state
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+  
+  // Handle table type change
+  const handleTableTypeChange = () => {
+    setIsEditingType(true);
+  };
+  
+  const updateTableType = (newType: string) => {
+    console.log(`TableNode ${id} changing type from ${tableType} to ${newType}`);
+    
+    // Update internal state
+    setTableType(newType);
+    
+    // Propagate the change up to parent
+    if (data.onColumnsChange) {
+      console.log(`TableNode ${id} calling onColumnsChange with new type ${newType}`);
+      data.onColumnsChange(data.columns, newType);
+    }
+    
+    setIsEditingType(false);
+  };
+
+  // Handle column deletion
+  const handleDeleteColumn = (index: number) => {
+    const updatedColumns = [...data.columns];
+    updatedColumns.splice(index, 1);
+    data.onColumnsChange?.(updatedColumns, tableType);
+  };
+
+  // Handle adding a new column
+  const handleAddColumn = () => {
+    const newColumn: Column = {
+      id: `col-${Date.now()}`,
+      name: `New Column ${data.columns.length + 1}`,
+      dataType: 'VARCHAR',
+      isPrimaryKey: false,
+      isForeignKey: false,
+      isNullable: true
+    };
+    
+    data.onColumnsChange?.([...data.columns, newColumn], tableType);
+  };
+
+  // Add form submit handler that ensures tableType is passed
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (editedColumn) {
+      const updatedColumns = data.columns.map(col => 
+        col.id === editingColumnId ? {
+          ...col,
+          name: editedColumn.name,
+          dataType: editedColumn.dataType,
+          isPrimaryKey: editedColumn.isPrimaryKey,
+          isForeignKey: editedColumn.isForeignKey,
+          isNullable: editedColumn.isNullable,
+          comment: editedComment,
+          tags: Array.isArray(editedTags) ? editedTags : editedTags.split(',').map(tag => tag.trim())
+        } : col
+      );
+      
+      data.onColumnsChange?.(updatedColumns, tableType);
+      setEditingColumnId(null);
+    }
+  };
+
   return (
     <div className={`border-2 rounded-md overflow-hidden ${
       selected ? 'border-primary-dark dark:border-primary-light' : 'border-gray-300 dark:border-gray-600'
-    } bg-white dark:bg-gray-800 shadow-md min-w-[250px] relative !z-10`}>
+    } bg-white dark:bg-gray-800 shadow-md min-w-[250px] relative !z-10 ${isDragging ? 'pointer-events-none' : ''}`}>
       {/* Connection handles - one in the center of each side */}
       <Handle
         type="source"
@@ -234,10 +399,33 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
         <div className="flex items-center justify-between">
           <span>{data.label}</span>
           <div className="flex items-center">
-            <div className="flex items-center text-xs text-gray-700 dark:text-gray-300 mr-2">
-              {getObjectTypeIcon()}
-              <span className="ml-1">{getDisplayTypeName(data.tableType)}</span>
-            </div>
+            {isEditingType ? (
+              <select
+                value={tableType || 'TABLE'}
+                onChange={(e) => updateTableType(e.target.value)}
+                onBlur={() => setIsEditingType(false)}
+                className="py-0 px-1 text-xs rounded bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600"
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+              >
+                <option value="TABLE">Table</option>
+                <option value="VIEW">View</option>
+                <option value="MATERIALIZED_VIEW">Materialized View</option>
+                <option value="DYNAMIC_TABLE">Dynamic Table</option>
+                <option value="ICEBERG_TABLE">Iceberg Table</option>
+              </select>
+            ) : (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleTableTypeChange();
+                }}
+                className="flex items-center text-xs text-gray-700 dark:text-gray-300 mr-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1"
+              >
+                {getObjectTypeIcon()}
+                <span className="ml-1">{getDisplayTypeName(tableType)}</span>
+              </button>
+            )}
             {data.onDelete && (
               <button
                 onClick={(e) => {
@@ -308,146 +496,174 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
       </div>
       
       {/* Columns */}
-      <div className="p-2 space-y-1 overflow-y-auto">
-        {data.columns.map((column) => (
-          <div key={column.id} className="relative group">
-            {editingColumnId === column.id ? (
-              <div className="p-2 border border-blue-300 dark:border-blue-500 rounded bg-blue-50 dark:bg-gray-700 space-y-2">
-                <div className="flex items-center">
-                  <input 
-                    type="text" 
-                    value={editedColumn?.name || ''}
-                    onChange={(e) => handleEditChange('name', e.target.value)}
-                    className="flex-1 p-1 text-sm border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  />
-                  <select 
-                    value={editedColumn?.dataType || ''}
-                    onChange={(e) => handleEditChange('dataType', e.target.value)}
-                    className="ml-2 p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  >
-                    <option value="VARCHAR">VARCHAR</option>
-                    <option value="NUMBER">NUMBER</option>
-                    <option value="INTEGER">INTEGER</option>
-                    <option value="FLOAT">FLOAT</option>
-                    <option value="BOOLEAN">BOOLEAN</option>
-                    <option value="DATE">DATE</option>
-                    <option value="TIMESTAMP">TIMESTAMP</option>
-                    <option value="VARIANT">VARIANT</option>
-                  </select>
-                </div>
-                <div className="flex items-center space-x-2 text-xs">
-                  <label className="flex items-center">
-                    <input 
-                      type="checkbox" 
-                      checked={editedColumn?.isPrimaryKey || false}
-                      onChange={(e) => handleEditChange('isPrimaryKey', e.target.checked)}
-                      className="mr-1"
-                    />
-                    PK
-                  </label>
-                  <label className="flex items-center">
-                    <input 
-                      type="checkbox" 
-                      checked={editedColumn?.isForeignKey || false}
-                      onChange={(e) => handleEditChange('isForeignKey', e.target.checked)}
-                      className="mr-1"
-                    />
-                    FK
-                  </label>
-                  <label className="flex items-center">
-                    <input 
-                      type="checkbox" 
-                      checked={editedColumn?.isNullable || false}
-                      onChange={(e) => handleEditChange('isNullable', e.target.checked)}
-                      className="mr-1"
-                    />
-                    NULL
-                  </label>
-                </div>
-                <div className="mt-2">
-                  <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
-                    Comment
-                  </label>
-                  <input 
-                    type="text" 
-                    value={editedColumn?.comment || ''}
-                    onChange={(e) => handleEditChange('comment', e.target.value)}
-                    placeholder="Optional column comment"
-                    className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  />
-                </div>
-                <div className="mt-2">
-                  <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
-                    Tags (comma separated)
-                  </label>
-                  <input 
-                    type="text" 
-                    value={editedColumn?.tags?.join(', ') || ''}
-                    onChange={(e) => handleTagsChange(e.target.value, false)}
-                    placeholder="tag1, tag2, tag3"
-                    className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  />
-                </div>
-                <div className="flex justify-end space-x-1">
-                  <button 
-                    onClick={cancelEditing}
-                    className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={saveColumnEdit}
-                    className="px-2 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div 
-                className="flex items-center text-sm p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer"
-                onClick={() => startEditing(column)}
-              >
-                <div className="flex-1 flex items-center">
-                  <span className={`mr-2 ${column.isPrimaryKey ? 'font-semibold' : ''}`}>
-                    {column.name}
-                  </span>
-                  <span className="text-gray-500 dark:text-gray-400 text-xs">
-                    {column.dataType}
-                  </span>
-                </div>
-                <div className="flex space-x-1">
-                  {column.isPrimaryKey && (
-                    <span className="text-yellow-500 text-xs" title="Primary Key">PK</span>
-                  )}
-                  {column.isForeignKey && (
-                    <span className="text-blue-500 text-xs" title="Foreign Key">FK</span>
-                  )}
-                  {column.isNullable && (
-                    <span className="text-gray-400 text-xs" title="Nullable">NULL</span>
-                  )}
-                  {column.comment && (
-                    <span className="text-green-500 text-xs" title={column.comment}>📝</span>
-                  )}
-                  {column.tags && column.tags.length > 0 && (
-                    <span className="text-purple-500 text-xs" title={column.tags.join(', ')}>🏷️</span>
-                  )}
-                </div>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteColumn(column.id);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 ml-1 text-red-500 hover:text-red-700"
-                  title="Delete column"
+      <div className="p-2 space-y-1 overflow-y-auto relative !z-20">
+        {data.columns.map((column, index) => (
+          editingColumnId === column.id ? (
+            <div key={column.id} className="p-2 border border-blue-300 dark:border-blue-500 rounded bg-blue-50 dark:bg-gray-700 space-y-2" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center">
+                <input 
+                  type="text" 
+                  value={editedColumn?.name || ''}
+                  onChange={(e) => handleEditChange('name', e.target.value)}
+                  className="flex-1 p-1 text-sm border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+                <select 
+                  value={editedColumn?.dataType || ''}
+                  onChange={(e) => handleEditChange('dataType', e.target.value)}
+                  className="ml-2 p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
+                  <option value="VARCHAR">VARCHAR</option>
+                  <option value="NUMBER">NUMBER</option>
+                  <option value="INTEGER">INTEGER</option>
+                  <option value="FLOAT">FLOAT</option>
+                  <option value="BOOLEAN">BOOLEAN</option>
+                  <option value="DATE">DATE</option>
+                  <option value="TIMESTAMP">TIMESTAMP</option>
+                  <option value="VARIANT">VARIANT</option>
+                </select>
+              </div>
+              <div className="flex items-center space-x-2 text-xs">
+                <label className="flex items-center">
+                  <input 
+                    type="checkbox" 
+                    checked={editedColumn?.isPrimaryKey || false}
+                    onChange={(e) => handleEditChange('isPrimaryKey', e.target.checked)}
+                    className="mr-1"
+                  />
+                  PK
+                </label>
+                <label className="flex items-center">
+                  <input 
+                    type="checkbox" 
+                    checked={editedColumn?.isForeignKey || false}
+                    onChange={(e) => handleEditChange('isForeignKey', e.target.checked)}
+                    className="mr-1"
+                  />
+                  FK
+                </label>
+                <label className="flex items-center">
+                  <input 
+                    type="checkbox" 
+                    checked={editedColumn?.isNullable || false}
+                    onChange={(e) => handleEditChange('isNullable', e.target.checked)}
+                    className="mr-1"
+                  />
+                  NULL
+                </label>
+              </div>
+              <div className="mt-2">
+                <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                  Comment
+                </label>
+                <input 
+                  type="text" 
+                  value={editedColumn?.comment || ''}
+                  onChange={(e) => handleEditChange('comment', e.target.value)}
+                  placeholder="Optional column comment"
+                  className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+              <div className="mt-2">
+                <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                  Tags (comma separated)
+                </label>
+                <input 
+                  type="text" 
+                  value={editedColumn?.tags?.join(', ') || ''}
+                  onChange={(e) => handleTagsChange(e.target.value, false)}
+                  placeholder="tag1, tag2, tag3"
+                  className="w-full p-1 text-xs border rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+              <div className="flex justify-end space-x-1">
+                <button 
+                  onClick={cancelEditing}
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={saveColumnEdit}
+                  className="px-2 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded"
+                >
+                  Save
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div
+              key={column.id} 
+              className={`flex items-center text-sm p-1 rounded group
+                ${dragOverIndex === index ? 'bg-blue-100 dark:bg-blue-900' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              onClick={(e) => startEditing(column, e)}
+              draggable={false}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDragEnter={(e) => handleDragEnter(e, index)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, index)}
+              style={{ position: 'relative', zIndex: dragOverIndex === index ? 30 : 20 }}
+            >
+              <div
+                className="mr-1 px-1 py-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-grab active:cursor-grabbing rounded hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center"
+                draggable={true}
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragEnd={handleDragEnd}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  // Add visual feedback
+                  (e.currentTarget as HTMLDivElement).style.cursor = 'grabbing';
+                }}
+                onMouseUp={(e) => {
+                  e.stopPropagation();
+                  (e.currentTarget as HTMLDivElement).style.cursor = 'grab';
+                }}
+                onClick={(e) => e.stopPropagation()}
+                style={{ position: 'relative', zIndex: 40 }}
+                title="Drag to reorder column"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="flex-1 flex items-center overflow-hidden">
+                <span className={`${column.isPrimaryKey ? 'font-semibold text-yellow-600 dark:text-yellow-400' : ''}`}>
+                  {column.name}
+                </span>
+                <span className="text-gray-500 dark:text-gray-400 text-xs ml-2">
+                  {column.dataType}
+                </span>
+              </div>
+              <div className="flex space-x-1">
+                {column.isPrimaryKey && (
+                  <span className="text-yellow-500 text-xs" title="Primary Key">PK</span>
+                )}
+                {column.isForeignKey && (
+                  <span className="text-blue-500 text-xs" title="Foreign Key">FK</span>
+                )}
+                {column.isNullable && (
+                  <span className="text-gray-400 text-xs" title="Nullable">NULL</span>
+                )}
+                {column.comment && (
+                  <span className="text-green-500 text-xs" title={column.comment}>📝</span>
+                )}
+                {column.tags && column.tags.length > 0 && (
+                  <span className="text-purple-500 text-xs" title={column.tags.join(', ')}>🏷️</span>
+                )}
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteColumn(column.id);
+                }}
+                className="opacity-0 group-hover:opacity-100 ml-1 text-red-500 hover:text-red-700"
+                title="Delete column"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
+          )
         ))}
 
         {isAddingColumn ? (

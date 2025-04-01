@@ -36,6 +36,7 @@ export interface DomainNodeType {
     label: string;
     color: string;
     opacity: number;
+    onDelete?: (nodeId: string) => void;
   };
 }
 
