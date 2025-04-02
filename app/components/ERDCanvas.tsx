@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import ReactFlow, {
-  Background,
+  MiniMap,
   Controls,
+  Background,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -13,7 +14,11 @@ import ReactFlow, {
   NodeChange,
   Panel,
   useReactFlow,
-  Node
+  Node,
+  ReactFlowProvider,
+  NodeTypes,
+  EdgeTypes,
+  OnConnect
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { toPng, toJpeg } from 'html-to-image';
@@ -530,6 +535,14 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
           nodeTypes={nodeTypes}
           defaultEdgeOptions={defaultEdgeOptions}
           fitView
+          fitViewOptions={{ 
+            padding: 0.2,
+            minZoom: 0.5,
+            maxZoom: 2
+          }}
+          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          minZoom={0.2}
+          maxZoom={4}
           elementsSelectable={true}
           nodesConnectable={true}
           style={{ background: 'var(--surface-light)' }}
@@ -537,6 +550,22 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
         >
           <Background color="#888" gap={16} />
           <Controls />
+          
+          {/* Reset View Button */}
+          <Panel position="bottom-left" className="ml-12 mb-2">
+            <button
+              onClick={() => {
+                reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 1 });
+                reactFlowInstance.fitView({ padding: 0.2, maxZoom: 1 });
+              }}
+              className="bg-white dark:bg-gray-800 p-2 rounded shadow hover:bg-gray-100 dark:hover:bg-gray-700"
+              title="Reset view"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </Panel>
           
           {/* Export button */}
           <Panel position="top-right" className="bg-white dark:bg-gray-800 rounded shadow-md flex">
