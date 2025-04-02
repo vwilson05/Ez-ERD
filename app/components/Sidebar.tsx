@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { NodeType, EdgeType, Column, ERDNode } from '../utils/types';
 import DDLGenerator from '../utils/DDLGenerator';
+import DDLParser from '../utils/DDLParser';
+import YAMLParser from '../utils/YAMLParser';
 import TableForm from './TableForm';
 import AIPrompt from './AIPrompt';
 import SnowflakeConnection from './SnowflakeConnection';
@@ -23,6 +25,7 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
   const [activeTab, setActiveTabState] = useState<'tables' | 'ai' | 'import' | 'export' | 'snowflake'>('tables');
   const [showCreateTable, setShowCreateTable] = useState(false);
   const [importDDL, setImportDDL] = useState('');
+  const [importYAML, setImportYAML] = useState('');
   const [importJson, setImportJson] = useState('');
   const [editableDDL, setEditableDDL] = useState(ddl);
   const [showNewTableForm, setShowNewTableForm] = useState(false);
@@ -129,9 +132,74 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
   
   // Function to handle importing DDL
   const handleImportDDL = () => {
-    // In a real implementation, this would parse the DDL and create nodes/edges
-    alert('DDL import functionality would be implemented here');
-    setImportDDL('');
+    try {
+      if (!importDDL.trim()) {
+        alert('Please paste your Snowflake DDL code');
+        return;
+      }
+      
+      const parser = new DDLParser(importDDL);
+      const { nodes: parsedNodes, edges: parsedEdges } = parser.parse();
+      
+      if (parsedNodes.length === 0) {
+        alert('No tables were found in the DDL. Please check the syntax and try again.');
+        return;
+      }
+      
+      // Update state with the parsed nodes and edges
+      setNodes(parsedNodes);
+      setEdges(parsedEdges);
+      
+      // Generate DDL
+      const ddlGenerator = new DDLGenerator(parsedNodes, parsedEdges);
+      const generatedDDL = ddlGenerator.generateSnowflakeDDL();
+      setDDL(generatedDDL);
+      
+      // Reset form and switch to tables tab
+      setImportDDL('');
+      setActiveTabState('tables');
+      
+      alert(`Successfully imported ${parsedNodes.length} tables from DDL!`);
+    } catch (error) {
+      console.error('Error importing DDL:', error);
+      alert('Failed to import DDL. Please check the syntax and try again.');
+    }
+  };
+  
+  // Function to handle importing YAML
+  const handleImportYAML = () => {
+    try {
+      if (!importYAML.trim()) {
+        alert('Please paste your dbt/Coalesce YAML configuration');
+        return;
+      }
+      
+      const parser = new YAMLParser(importYAML);
+      const { nodes: parsedNodes, edges: parsedEdges } = parser.parse();
+      
+      if (parsedNodes.length === 0) {
+        alert('No models or sources were found in the YAML. Please check the format and try again.');
+        return;
+      }
+      
+      // Update state with the parsed nodes and edges
+      setNodes(parsedNodes);
+      setEdges(parsedEdges);
+      
+      // Generate DDL
+      const ddlGenerator = new DDLGenerator(parsedNodes, parsedEdges);
+      const generatedDDL = ddlGenerator.generateSnowflakeDDL();
+      setDDL(generatedDDL);
+      
+      // Reset form and switch to tables tab
+      setImportYAML('');
+      setActiveTabState('tables');
+      
+      alert(`Successfully imported ${parsedNodes.length} objects from YAML!`);
+    } catch (error) {
+      console.error('Error importing YAML:', error);
+      alert('Failed to import YAML. Please check the format and try again.');
+    }
   };
   
   // Function to handle DDL changes
@@ -368,11 +436,28 @@ export default function Sidebar({ nodes, setNodes, edges, setEdges, ddl, setDDL,
               </button>
             </div>
             
+            <div className="border-b pb-4 mb-4">
+              <h4 className="font-medium text-sm mb-2">Import from dbt/Coalesce YAML</h4>
+              <textarea
+                className="w-full h-40 p-2 border rounded dark:border-gray-600 bg-white dark:bg-gray-900 text-sm font-mono"
+                placeholder="Paste dbt or Coalesce YAML schema here... Supports models, sources, and relationships."
+                value={importYAML}
+                onChange={(e) => setImportYAML(e.target.value)}
+              />
+              <button
+                onClick={handleImportYAML}
+                className="w-full mt-2 bg-primary-light hover:bg-primary dark:bg-primary-dark hover:dark:bg-primary text-white px-3 py-2 rounded text-sm"
+                disabled={!importYAML.trim()}
+              >
+                Import YAML
+              </button>
+            </div>
+            
             <div>
               <h4 className="font-medium text-sm mb-2">Import DDL</h4>
               <textarea
                 className="w-full h-40 p-2 border rounded dark:border-gray-600 bg-white dark:bg-gray-900 text-sm font-mono"
-                placeholder="Paste Snowflake DDL here..."
+                placeholder="Paste Snowflake DDL here... Multiple CREATE TABLE and ALTER TABLE statements separated by semicolons are supported."
                 value={importDDL}
                 onChange={(e) => setImportDDL(e.target.value)}
               />
