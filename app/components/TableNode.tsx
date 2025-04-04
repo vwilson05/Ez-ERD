@@ -361,12 +361,12 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
     <div className={`border-2 rounded-md overflow-hidden ${
       selected ? 'border-primary-dark dark:border-primary-light' : 'border-gray-300 dark:border-gray-600'
     } bg-white dark:bg-gray-800 shadow-md min-w-[250px] relative !z-10 ${isDragging ? 'pointer-events-none' : ''}`}>
-      {/* Connection handles - one in the center of each side */}
+      {/* Main table connection handles - for backwards compatibility */}
       <Handle
         type="source"
         position={Position.Top}
         id={`${id}-top`}
-        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm"
+        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm hidden"
         style={{ left: '50%', top: '0px', transform: 'translate(-50%, -50%)' }}
       />
       
@@ -374,7 +374,7 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
         type="source"
         position={Position.Left}
         id={`${id}-left`}
-        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm"
+        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm hidden"
         style={{ top: '50%', left: '0px', transform: 'translate(-50%, -50%)' }}
       />
       
@@ -382,7 +382,7 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
         type="target"
         position={Position.Right}
         id={`${id}-right`}
-        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm"
+        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm hidden"
         style={{ top: '50%', right: '0px', transform: 'translate(50%, -50%)' }}
       />
       
@@ -390,7 +390,7 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
         type="target"
         position={Position.Bottom}
         id={`${id}-bottom`}
-        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm"
+        className="!absolute !w-2 !h-2 !bg-white !border-0 !rounded-full !z-[9999] !shadow-sm hidden"
         style={{ left: '50%', bottom: '0px', transform: 'translate(-50%, 50%)' }}
       />
       
@@ -593,7 +593,7 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
           ) : (
             <div
               key={column.id} 
-              className={`flex items-center text-sm p-1 rounded group
+              className={`flex items-center text-sm p-1 rounded group relative
                 ${dragOverIndex === index ? 'bg-blue-100 dark:bg-blue-900' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
               onClick={(e) => startEditing(column, e)}
               draggable={false}
@@ -603,6 +603,42 @@ export default function TableNode({ id, data, selected }: TableNodeProps) {
               onDrop={(e) => handleDrop(e, index)}
               style={{ position: 'relative', zIndex: dragOverIndex === index ? 30 : 20 }}
             >
+              {/* Column-specific connection handles */}
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={`${id}-col-${column.id}-source`}
+                className={`!absolute !w-2 !h-2 !border-0 !rounded-full transition-opacity duration-200 !z-[9999] !shadow-sm ${
+                  column.isPrimaryKey 
+                    ? '!bg-yellow-500 opacity-70 group-hover:opacity-100' 
+                    : column.isForeignKey 
+                      ? '!bg-blue-500 opacity-70 group-hover:opacity-100'
+                      : '!bg-green-500 opacity-30 group-hover:opacity-100'
+                }`}
+                style={{ right: '0px', top: '50%', transform: 'translate(50%, -50%)' }}
+                data-column-id={column.id}
+                data-column-name={column.name}
+                data-is-pk={column.isPrimaryKey}
+                data-is-fk={column.isForeignKey}
+              />
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={`${id}-col-${column.id}-target`}
+                className={`!absolute !w-2 !h-2 !border-0 !rounded-full transition-opacity duration-200 !z-[9999] !shadow-sm ${
+                  column.isPrimaryKey 
+                    ? '!bg-yellow-500 opacity-70 group-hover:opacity-100' 
+                    : column.isForeignKey 
+                      ? '!bg-blue-500 opacity-70 group-hover:opacity-100'
+                      : '!bg-green-500 opacity-30 group-hover:opacity-100'
+                }`}
+                style={{ left: '0px', top: '50%', transform: 'translate(-50%, -50%)' }}
+                data-column-id={column.id}
+                data-column-name={column.name}
+                data-is-pk={column.isPrimaryKey}
+                data-is-fk={column.isForeignKey}
+              />
+              
               <div
                 className="mr-1 px-1 py-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-grab active:cursor-grabbing rounded hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center"
                 draggable={true}

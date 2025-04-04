@@ -18,13 +18,15 @@ import ReactFlow, {
   ReactFlowProvider,
   NodeTypes,
   EdgeTypes,
-  OnConnect
+  OnConnect,
+  getNodesBounds
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { toPng, toJpeg } from 'html-to-image';
 import jsPDF from 'jspdf';
 import TableNode from './TableNode';
 import DomainNode from './DomainNode';
+import RelationshipEdge from './RelationshipEdge';
 import { NodeType, EdgeType, Column, DomainNodeType, ERDNode } from '../utils/types';
 import RelationshipTypeSelector from './RelationshipTypeSelector';
 import { tableTemplates, TableTemplate } from '../utils/tableTemplates';
@@ -37,6 +39,11 @@ const nodeTypes = {
   domain: DomainNode,
 };
 
+// Define custom edge types
+const edgeTypes = {
+  relationship: RelationshipEdge,
+};
+
 interface ERDCanvasProps {
   nodes: ERDNode[];
   setNodes: React.Dispatch<React.SetStateAction<ERDNode[]>>;
@@ -44,10 +51,10 @@ interface ERDCanvasProps {
   setEdges: (edges: EdgeType[]) => void;
 }
 
-// Default edge settings for a cleaner look with curved bezier edges
+// Default edge settings for using our custom RelationshipEdge component
 const defaultEdgeOptions = {
-  type: 'bezier',
-  style: { strokeWidth: 2 },
+  type: 'relationship',
+  style: { strokeWidth: 1.5 },
   animated: false
 };
 
@@ -209,11 +216,89 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
       // Guard against null source or target
       if (!params.source || !params.target) return;
       
+      // Extract column information from the handle IDs
+      const isColumnConnection = params.sourceHandle?.includes('-col-') && params.targetHandle?.includes('-col-');
+      
+      const sourceHandleId = params.sourceHandle || '';
+      const targetHandleId = params.targetHandle || '';
+      
+      // Default relationship type based on the connection
+      let defaultRelationshipType: 'one-to-one' | 'one-to-many' | 'many-to-many' = 'one-to-many';
+      
+      // If it's a column-to-column connection, try to determine relationship type based on column properties
+      if (isColumnConnection) {
+        // Get the source and target nodes
+        const sourceNode = nodes.find(node => node.id === params.source) as NodeType;
+        const targetNode = nodes.find(node => node.id === params.target) as NodeType;
+        
+        if (sourceNode && targetNode && sourceNode.type === 'table' && targetNode.type === 'table') {
+          // Extract column IDs from handle IDs
+          const sourceColId = sourceHandleId.split('-col-')[1]?.split('-')[0];
+          const targetColId = targetHandleId.split('-col-')[1]?.split('-')[0];
+          
+          // Find the columns
+          const sourceColumn = sourceNode.data.columns.find(col => col.id === sourceColId);
+          const targetColumn = targetNode.data.columns.find(col => col.id === targetColId);
+          
+          if (sourceColumn && targetColumn) {
+            // Determine relationship type based on column properties
+            if (sourceColumn.isPrimaryKey && targetColumn.isPrimaryKey) {
+              defaultRelationshipType = 'many-to-many';
+            } else if (sourceColumn.isPrimaryKey && !targetColumn.isPrimaryKey) {
+              defaultRelationshipType = 'one-to-many';
+            } else if (!sourceColumn.isPrimaryKey && targetColumn.isPrimaryKey) {
+              // Note: This is semantically a "many-to-one" relationship (from source to target),
+              // but we use 'one-to-many' type because that's what our EdgeType supports.
+              // The relationship edge visual will appear correct based on the handle positions.
+              defaultRelationshipType = 'one-to-many';
+            } else {
+              // Use one-to-one as default when connecting non-PK columns
+              defaultRelationshipType = 'one-to-one';
+            }
+            
+            // Update column properties to reflect the relationship
+            // Mark the target column as FK if connecting from a PK
+            const updatedSourceColumns = sourceNode.data.columns.map(col => 
+              col.id === sourceColId 
+                ? { ...col, isForeignKey: col.id === sourceColId && targetColumn.isPrimaryKey } 
+                : col
+            );
+            
+            const updatedTargetColumns = targetNode.data.columns.map(col => 
+              col.id === targetColId 
+                ? { ...col, isForeignKey: col.id === targetColId && sourceColumn.isPrimaryKey } 
+                : col
+            );
+            
+            // Update nodes with new column definitions
+            // This part is commented out because it causes circular updates when columns are marked as FK
+            // The relationship is still shown through the edge visualization
+            /*
+            const updatedNodes = nodes.map(node => {
+              if (node.id === sourceNode.id && node.type === 'table') {
+                return { ...node, data: { ...node.data, columns: updatedSourceColumns } };
+              } else if (node.id === targetNode.id && node.type === 'table') {
+                return { ...node, data: { ...node.data, columns: updatedTargetColumns } };
+              }
+              return node;
+            });
+            
+            setNodes(updatedNodes as ERDNode[]);
+            */
+          }
+        }
+      }
+      
+      // Create the new edge
       const newEdge = {
         ...params,
         id: `e${params.source}-${params.target}-${Date.now()}`,
-        type: 'bezier',
-        data: { relationshipType: 'one-to-many' },
+        type: 'relationship',
+        data: { 
+          relationshipType: defaultRelationshipType,
+          sourceHandle: sourceHandleId,
+          targetHandle: targetHandleId
+        },
       } as Edge;
       
       setReactFlowEdges((eds) => addEdge(newEdge, eds));
@@ -223,16 +308,18 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
         id: newEdge.id,
         source: newEdge.source,
         target: newEdge.target,
-        sourceHandle: newEdge.sourceHandle || '',
-        targetHandle: newEdge.targetHandle || '',
+        sourceHandle: sourceHandleId,
+        targetHandle: targetHandleId,
         type: 'relationship',
-        data: { relationshipType: 'one-to-many' }
+        data: { 
+          relationshipType: defaultRelationshipType
+        }
       };
       
       setEdges([...edges, newEdgeForState]);
       setSelectedEdge(newEdgeForState);
     },
-    [edges, setEdges, setReactFlowEdges]
+    [edges, setEdges, setReactFlowEdges, nodes]
   );
 
   // Handle edge selection
@@ -342,12 +429,66 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
     const isDarkMode = document.documentElement.classList.contains('dark');
     const bgColor = isDarkMode ? '#111827' : '#ffffff';
     
-    toPng(reactFlowWrapper.current, { 
-      backgroundColor: bgColor,
-      quality: 1,
-      pixelRatio: 2
-    })
+    // We need to temporarily fit the view to ensure all nodes are visible before export
+    const currentViewport = reactFlowInstance.getViewport();
+    
+    // First, get the bounds of all nodes to know what area to capture
+    const nodesBounds = getNodesBounds(reactFlowNodes);
+    
+    // Add some padding around the nodes (percentage of the bounds)
+    const padding = Math.max(nodesBounds.width, nodesBounds.height) * 0.1;
+    
+    // Apply temporary transformations to fit the view to the content
+    reactFlowInstance.fitBounds(
+      {
+        x: nodesBounds.x - padding,
+        y: nodesBounds.y - padding,
+        width: nodesBounds.width + padding * 2,
+        height: nodesBounds.height + padding * 2
+      },
+      { duration: 0 }
+    );
+    
+    // Hide UI elements temporarily
+    const uiElements = reactFlowWrapper.current.querySelectorAll('.react-flow__panel, .react-flow__controls, .react-flow__minimap, .react-flow__attribution');
+    uiElements.forEach(el => {
+      (el as HTMLElement).style.display = 'none';
+    });
+    
+    // Use setTimeout to ensure the flow has been properly rendered before capturing
+    setTimeout(() => {
+      // Ensure element still exists when timeout completes
+      if (!reactFlowWrapper.current) {
+        console.error('Element no longer exists');
+        return;
+      }
+      
+      toPng(reactFlowWrapper.current, {
+        backgroundColor: bgColor,
+        quality: 1,
+        pixelRatio: 2.5,
+        // Don't try to manipulate the styles, just export as-is
+        filter: (node) => {
+          // Keep only the elements we want in the export
+          const isPanel = node.classList?.contains('react-flow__panel');
+          const isControls = node.classList?.contains('react-flow__controls');
+          const isMinimap = node.classList?.contains('react-flow__minimap');
+          const isAttributionPanel = node.classList?.contains('react-flow__attribution');
+          
+          // Filter out UI elements but keep everything else
+          return !(isPanel || isControls || isMinimap || isAttributionPanel);
+        }
+      })
       .then((dataUrl) => {
+        // Restore UI elements
+        uiElements.forEach(el => {
+          (el as HTMLElement).style.display = '';
+        });
+        
+        // Restore the original viewport
+        reactFlowInstance.setViewport(currentViewport, { duration: 0 });
+        
+        // Download the image
         const link = document.createElement('a');
         link.download = 'erd-diagram.png';
         link.href = dataUrl;
@@ -356,8 +497,16 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
       })
       .catch((error) => {
         console.error('Error exporting as PNG:', error);
+        // Restore UI elements on error
+        uiElements.forEach(el => {
+          (el as HTMLElement).style.display = '';
+        });
+        
+        // Restore the original viewport on error as well
+        reactFlowInstance.setViewport(currentViewport, { duration: 0 });
       });
-  }, []);
+    }, 250); // Give it a bit more time to render
+  }, [reactFlowInstance, reactFlowNodes]);
   
   const exportAsPdf = useCallback(() => {
     if (!reactFlowWrapper.current) return;
@@ -365,17 +514,72 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
     const isDarkMode = document.documentElement.classList.contains('dark');
     const bgColor = isDarkMode ? '#111827' : '#ffffff';
     
-    toJpeg(reactFlowWrapper.current, { 
-      backgroundColor: bgColor,
-      quality: 0.95,
-      pixelRatio: 2
-    })
+    // We need to temporarily fit the view to ensure all nodes are visible before export
+    const currentViewport = reactFlowInstance.getViewport();
+    
+    // First, get the bounds of all nodes to know what area to capture
+    const nodesBounds = getNodesBounds(reactFlowNodes);
+    
+    // Add some padding around the nodes (percentage of the bounds)
+    const padding = Math.max(nodesBounds.width, nodesBounds.height) * 0.1;
+    
+    // Apply temporary transformations to fit the view to the content
+    reactFlowInstance.fitBounds(
+      {
+        x: nodesBounds.x - padding,
+        y: nodesBounds.y - padding,
+        width: nodesBounds.width + padding * 2,
+        height: nodesBounds.height + padding * 2
+      },
+      { duration: 0 }
+    );
+    
+    // Hide UI elements temporarily
+    const uiElements = reactFlowWrapper.current.querySelectorAll('.react-flow__panel, .react-flow__controls, .react-flow__minimap, .react-flow__attribution');
+    uiElements.forEach(el => {
+      (el as HTMLElement).style.display = 'none';
+    });
+    
+    // Use setTimeout to ensure the flow has been properly rendered before capturing
+    setTimeout(() => {
+      // Ensure element still exists when timeout completes
+      if (!reactFlowWrapper.current) {
+        console.error('Element no longer exists');
+        return;
+      }
+      
+      toJpeg(reactFlowWrapper.current, {
+        backgroundColor: bgColor,
+        quality: 0.95,
+        pixelRatio: 2.5,
+        // Don't try to manipulate the styles, just export as-is
+        filter: (node) => {
+          // Keep only the elements we want in the export
+          const isPanel = node.classList?.contains('react-flow__panel');
+          const isControls = node.classList?.contains('react-flow__controls');
+          const isMinimap = node.classList?.contains('react-flow__minimap');
+          const isAttributionPanel = node.classList?.contains('react-flow__attribution');
+          
+          // Filter out UI elements but keep everything else
+          return !(isPanel || isControls || isMinimap || isAttributionPanel);
+        }
+      })
       .then((dataUrl) => {
+        // Restore UI elements
+        uiElements.forEach(el => {
+          (el as HTMLElement).style.display = '';
+        });
+        
+        // Restore the original viewport
+        reactFlowInstance.setViewport(currentViewport, { duration: 0 });
+        
+        // Create PDF
         const pdf = new jsPDF({
           orientation: 'landscape',
           unit: 'px'
         });
         
+        // Calculate the aspect ratio to fit the diagram properly on the PDF
         const imgProps = pdf.getImageProperties(dataUrl);
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
@@ -386,8 +590,16 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
       })
       .catch((error) => {
         console.error('Error exporting as PDF:', error);
+        // Restore UI elements on error
+        uiElements.forEach(el => {
+          (el as HTMLElement).style.display = '';
+        });
+        
+        // Restore the original viewport on error as well
+        reactFlowInstance.setViewport(currentViewport, { duration: 0 });
       });
-  }, []);
+    }, 250); // Give it a bit more time to render
+  }, [reactFlowInstance, reactFlowNodes]);
 
   // Group templates by category
   const groupedTemplates = useMemo(() => {
@@ -533,6 +745,7 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
           }}
           onContextMenu={onCanvasContextMenu}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           defaultEdgeOptions={defaultEdgeOptions}
           fitView
           fitViewOptions={{ 
@@ -550,6 +763,16 @@ export default function ERDCanvas({ nodes, setNodes, edges, setEdges }: ERDCanva
         >
           <Background color="#888" gap={16} />
           <Controls />
+          
+          {/* Column Connection Help Panel */}
+          <Panel position="top-left" className="bg-white dark:bg-gray-800 rounded shadow-md p-2 m-2 text-xs">
+            <div className="font-medium mb-1">📝 Column Connections</div>
+            <ul className="list-disc list-inside text-gray-600 dark:text-gray-300">
+              <li>Hover over a column to reveal connection points</li>
+              <li>Drag from column to column to create relationships</li>
+              <li>Click on connections to set relationship type</li>
+            </ul>
+          </Panel>
           
           {/* Reset View Button */}
           <Panel position="bottom-left" className="ml-12 mb-2">

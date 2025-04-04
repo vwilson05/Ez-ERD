@@ -8,6 +8,13 @@ EzERD is a minimalist tool for creating Entity Relationship Diagrams (ERDs) and 
   - **In-line Editing**: Edit table fields directly on the ERD canvas
   - **Multi-point Connections**: Connect relationships from any side of table boxes
   - **Auto-sizing Tables**: Tables automatically expand to fit their content
+  - **Column-to-Column Connections**: Create precise relationships between specific columns
+  - **Clear Relationship Types**: Visually distinguish between one-to-one, one-to-many, and many-to-many relationships
+
+- **Clean Exports**: Export your diagrams as PNG or PDF with professional quality
+  - **Background Grid Preservation**: Maintain the dot grid pattern in exports
+  - **UI Element Filtering**: Automatically hide UI controls in exports
+  - **High Resolution Output**: Crisp, clear diagrams at 2.5x resolution
 
 - **Snowflake DDL Generation**: Instantly convert your ERD to Snowflake-compatible DDL
   - **Edit & Execute**: Modify generated DDL with instant updates
@@ -27,6 +34,7 @@ EzERD is a minimalist tool for creating Entity Relationship Diagrams (ERDs) and 
   - **Dark & Light Modes**: Toggle between comfortable viewing options
   - **Responsive Design**: Works on various screen sizes
   - **Visual Feedback**: Clear indications of relationships and table structures
+  - **Domain Grouping**: Organize related tables with color-coded domain boxes
 
 ## Getting Started
 

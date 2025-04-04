@@ -1,5 +1,6 @@
 'use client';
 
+import React, { useEffect, useState } from 'react';
 import { EdgeType } from '../utils/types';
 
 interface RelationshipTypeSelectorProps {
@@ -37,6 +38,45 @@ const relationshipOptions: RelationshipOption[] = [
 ];
 
 export default function RelationshipTypeSelector({ edge, onSelect, onClose }: RelationshipTypeSelectorProps) {
+  const [sourceColumnInfo, setSourceColumnInfo] = useState<string | null>(null);
+  const [targetColumnInfo, setTargetColumnInfo] = useState<string | null>(null);
+  
+  // Extract column information from handles if it's a column-to-column connection
+  useEffect(() => {
+    if (edge.sourceHandle && edge.targetHandle) {
+      const isColumnConnection = edge.sourceHandle.includes('-col-') && edge.targetHandle.includes('-col-');
+      
+      if (isColumnConnection) {
+        // Extract column IDs from handles
+        const sourceHandleParts = edge.sourceHandle.split('-col-');
+        const targetHandleParts = edge.targetHandle.split('-col-');
+        
+        if (sourceHandleParts.length > 1 && targetHandleParts.length > 1) {
+          const sourceNodeId = sourceHandleParts[0];
+          const targetNodeId = targetHandleParts[0];
+          
+          const sourceColId = sourceHandleParts[1].split('-')[0];
+          const targetColId = targetHandleParts[1].split('-')[0];
+          
+          // Try to extract column info from data attributes in handles
+          // This would need to be set when creating the handles in TableNode
+          const sourceColumnName = document.querySelector(`[id="${edge.sourceHandle}"]`)?.getAttribute('data-column-name');
+          const targetColumnName = document.querySelector(`[id="${edge.targetHandle}"]`)?.getAttribute('data-column-name');
+          
+          if (sourceColumnName) {
+            setSourceColumnInfo(`${sourceColumnName} (${sourceNodeId})`);
+          }
+          
+          if (targetColumnName) {
+            setTargetColumnInfo(`${targetColumnName} (${targetNodeId})`);
+          }
+        }
+      }
+    }
+  }, [edge.sourceHandle, edge.targetHandle]);
+  
+  const isColumnConnection = edge.sourceHandle?.includes('-col-') && edge.targetHandle?.includes('-col-');
+
   return (
     <div className="w-80">
       <div className="flex justify-between items-center mb-2">
@@ -52,7 +92,17 @@ export default function RelationshipTypeSelector({ edge, onSelect, onClose }: Re
       </div>
       
       <div className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-        Relationship between tables: <span className="font-medium">{edge.source}</span> and <span className="font-medium">{edge.target}</span>
+        {isColumnConnection && (sourceColumnInfo || targetColumnInfo) ? (
+          <>
+            <span className="font-bold">Column relationship:</span><br/>
+            {sourceColumnInfo && <div className="mb-1">Source: <span className="font-medium">{sourceColumnInfo}</span></div>}
+            {targetColumnInfo && <div>Target: <span className="font-medium">{targetColumnInfo}</span></div>}
+          </>
+        ) : (
+          <>
+            Relationship between tables: <span className="font-medium">{edge.source}</span> and <span className="font-medium">{edge.target}</span>
+          </>
+        )}
       </div>
       
       <div className="space-y-2">

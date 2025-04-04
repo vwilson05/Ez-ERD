@@ -1,0 +1,25 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+🧠 LLM Coding Assistant Rules
+- Follow the existing architecture. Do not invent new patterns.
+- Do not introduce new libraries unless explicitly approved.
+- When fixing bugs, explain side effects and regression risks.
+- Do not modify existing code without explaining the impact.
+- Always include tests when adding/modifying functionality.
+- Follow naming conventions: camelCase for variables, 
+- PascalCase for components, snake_case for backend functions.
+
+👥 Human Co-Dev Practices
+- Commit working code often, push to feature branches.
+- Use PRs for reviews with clear descriptions.
+- Run all tests before merging.
+
+✅ Done = Done Checklist
+- [ ] Feature works as intended
+- [ ] No other features were broken
+- [ ] Tests are passing and meaningful
+- [ ] Code follows the existing patterns
